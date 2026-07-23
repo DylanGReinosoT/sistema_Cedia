@@ -1,0 +1,20 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(mkdir -p \"database\" \"docs\")",
+      "Bash(psql --version)",
+      "Bash(docker --version)",
+      "Bash(docker rm *)",
+      "Bash(docker run *)",
+      "Bash(powershell -Command \"Start-Process 'C:\\\\Program Files\\\\Docker\\\\Docker\\\\Docker Desktop.exe'\")",
+      "Bash(docker cp *)",
+      "Bash(docker exec *)",
+      "Bash(MSYS_NO_PATHCONV=1 docker exec -u postgres pg_test_espe psql -d espe -v ON_ERROR_STOP=1 -f /schema.sql)",
+      "Bash(MSYS_NO_PATHCONV=1 docker exec -u postgres pg_test_espe psql -d espe -f /test_flow.sql)",
+      "Bash(MSYS_NO_PATHCONV=1 docker exec -u postgres pg_test_espe psql -d espe -c \"SET search_path TO gestion_fondos, public; INSERT INTO hitos \\(proyecto_id, nombre, fecha_inicio_planificada, fecha_fin_planificada\\) SELECT id, 'Hito 1', '2026-07-01','2026-08-01' FROM proyectos WHERE codigo_proyecto='PRY-2026-001';\")"
+    ],
+    "additionalDirectories": [
+      "C:\\Users\\Admin\\Desktop\\8VO SEMESTRE\\CONSTRUCCIÓN Y EVOLUCIÓN DEL SOFTWARE\\TERCER PARCIAL\\EXTRA\\sistema_Cedia"
+    ]
+  }
+}
