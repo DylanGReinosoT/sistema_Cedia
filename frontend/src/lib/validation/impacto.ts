@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { TIPO_PUBLICACION } from "@/lib/types/enums";
+import { optionalCoercedInt } from "./common";
 
 export const publicacionSchema = z.object({
   titulo: z.string().min(1, "Requerido").max(400),
@@ -15,7 +16,7 @@ export type PublicacionFormInput = z.infer<typeof publicacionSchema>;
 export const patenteSchema = z.object({
   titulo: z.string().min(1, "Requerido").max(400),
   numero_registro: z.string().optional().or(z.literal("")),
-  pais_id: z.coerce.number().int().optional(),
+  pais_id: optionalCoercedInt(),
   fecha_solicitud: z.iso.date().optional().or(z.literal("")),
   fecha_concesion: z.iso.date().optional().or(z.literal("")),
   url_documento: z.string().optional().or(z.literal("")),

@@ -35,7 +35,10 @@ export function Dialog({
         if (e.target === ref.current) onClose();
       }}
       className={cn(
-        "w-full max-w-lg rounded-lg border-0 p-0 shadow-xl backdrop:bg-slate-900/50",
+        // El reset de Tailwind pone `margin: 0` en todo, lo que anula el auto-centrado
+        // que el navegador aplica por defecto a <dialog showModal>. Se centra a mano.
+        "fixed top-1/2 left-1/2 m-0 w-[calc(100%-2rem)] max-w-lg -translate-x-1/2 -translate-y-1/2",
+        "rounded-lg border-0 p-0 shadow-xl backdrop:bg-slate-900/50",
         className,
       )}
     >

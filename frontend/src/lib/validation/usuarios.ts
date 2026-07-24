@@ -1,10 +1,11 @@
 import { z } from "zod";
+import { optionalCoercedInt } from "./common";
 
 export const updateUsuarioSchema = z.object({
   nombres: z.string().min(1, "Requerido").max(150),
   apellidos: z.string().min(1, "Requerido").max(150),
   telefono: z.string().max(20).optional().or(z.literal("")),
-  departamento_id: z.coerce.number().int().optional(),
+  departamento_id: optionalCoercedInt(),
 });
 export type UpdateUsuarioFormInput = z.infer<typeof updateUsuarioSchema>;
 

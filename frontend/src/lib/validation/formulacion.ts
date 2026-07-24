@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { NIVEL_RIESGO, CATEGORIA_IMPACTO } from "@/lib/types/enums";
+import { optionalCoercedInt } from "./common";
 
 export const formulacionTextoSchema = z.object({
   diagnostico_problema: z.string().optional().or(z.literal("")),
@@ -16,7 +17,7 @@ export const objetivoSchema = z.object({
   descripcion: z.string().min(1, "Requerido"),
   indicador: z.string().optional().or(z.literal("")),
   meta: z.string().optional().or(z.literal("")),
-  orden: z.coerce.number().int().optional(),
+  orden: optionalCoercedInt(),
 });
 export type ObjetivoFormInput = z.infer<typeof objetivoSchema>;
 

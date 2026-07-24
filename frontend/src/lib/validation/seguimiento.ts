@@ -1,11 +1,12 @@
 import { z } from "zod";
 import { ESTADO_HITO_TAREA } from "@/lib/types/enums";
+import { optionalCoercedInt } from "./common";
 
 export const hitoSchema = z.object({
   objetivo_especifico_id: z.string().optional().or(z.literal("")),
   nombre: z.string().min(1, "Requerido").max(250),
   descripcion: z.string().optional().or(z.literal("")),
-  orden: z.coerce.number().int().optional(),
+  orden: optionalCoercedInt(),
   fecha_inicio_planificada: z.iso.date("Fecha inválida"),
   fecha_fin_planificada: z.iso.date("Fecha inválida"),
 });

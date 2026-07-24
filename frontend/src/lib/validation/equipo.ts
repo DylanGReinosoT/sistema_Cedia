@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { optionalCoercedInt } from "./common";
 
 export const miembroEquipoSchema = z
   .object({
@@ -8,7 +9,7 @@ export const miembroEquipoSchema = z
     externo_identificacion: z.string().max(20).optional().or(z.literal("")),
     externo_nombres: z.string().max(150).optional().or(z.literal("")),
     externo_apellidos: z.string().max(150).optional().or(z.literal("")),
-    externo_institucion_id: z.coerce.number().int().optional(),
+    externo_institucion_id: optionalCoercedInt(),
     externo_correo: z.email("Correo inválido").optional().or(z.literal("")),
   })
   .refine((v) => (v.tipo === "interno" ? z.uuid().safeParse(v.usuario_id).success : true), {

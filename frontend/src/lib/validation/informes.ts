@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { optionalCoercedNumber } from "./common";
 
 export const informeSchema = z.object({
   periodo_reporte_id: z.uuid("Selecciona un período"),
@@ -8,8 +9,8 @@ export type InformeFormInput = z.infer<typeof informeSchema>;
 
 export const presentarInformeSchema = z.object({
   archivo_url: z.string().min(1, "Requerido"),
-  avance_tecnico_pct: z.coerce.number().int().min(0).max(100).optional(),
-  avance_financiero_pct: z.coerce.number().int().min(0).max(100).optional(),
-  horas_liberadas_justificadas: z.coerce.number().min(0).optional(),
+  avance_tecnico_pct: optionalCoercedNumber(),
+  avance_financiero_pct: optionalCoercedNumber(),
+  horas_liberadas_justificadas: optionalCoercedNumber(),
 });
 export type PresentarInformeFormInput = z.infer<typeof presentarInformeSchema>;

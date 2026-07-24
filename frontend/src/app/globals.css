@@ -12,13 +12,11 @@
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
-
+/*
+ * Esta app se diseñó solo en tema claro (ningún componente usa variantes `dark:`),
+ * por eso NO seguimos `prefers-color-scheme: dark` del sistema operativo del usuario —
+ * eso causaba un fondo negro automático que rompía el contraste en todas las vistas.
+ */
 body {
   background: var(--background);
   color: var(--foreground);

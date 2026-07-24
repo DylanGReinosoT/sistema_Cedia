@@ -1,11 +1,12 @@
 import { z } from "zod";
 import { TIPO_CALENDARIO_INFORME } from "@/lib/types/enums";
+import { optionalCoercedInt } from "./common";
 
 export const periodoReporteSchema = z
   .object({
     tipo: z.enum(TIPO_CALENDARIO_INFORME),
-    entidad_financiadora_id: z.coerce.number().int().optional(),
-    periodo_academico_id: z.coerce.number().int().optional(),
+    entidad_financiadora_id: optionalCoercedInt(),
+    periodo_academico_id: optionalCoercedInt(),
     anio: z.coerce.number().int().min(2000).max(2100),
     fecha_corte: z.iso.date("Fecha inválida"),
     etiqueta: z.string().min(1, "Requerido").max(100),
