@@ -1,7 +1,14 @@
 # Diccionario de Datos — Sistema de Gestión de Fondos Externos y Cooperación Internacional (ESPE)
 
-Corresponde al script [`database/01_schema_gestion_fondos_externos.sql`](../database/01_schema_gestion_fondos_externos.sql).
-Todo el modelo vive en el esquema `gestion_fondos` de PostgreSQL (>= 13).
+**Versión V2.** Corresponde a la ejecución conjunta de:
+1. [`database/01_schema_gestion_fondos_externos.sql`](../database/01_schema_gestion_fondos_externos.sql) — esquema base (V1).
+2. [`database/02_migracion_v1_a_v2.sql`](../database/02_migracion_v1_a_v2.sql) — migración evolutiva (V2), que amplía el equipo de
+   investigación, agrega los metadatos académicos/científicos y el desglose presupuestario exigidos por el formato oficial de
+   formulación de proyectos de la ESPE, incorpora la matriz de riesgos, el análisis de impactos y los objetivos general/específicos,
+   y alinea la nomenclatura de estados del proyecto.
+
+Todo el modelo vive en el esquema `gestion_fondos` de PostgreSQL (>= 13). Las tablas y columnas introducidas o modificadas en V2
+están marcadas con la etiqueta **`V2`**; lo que no lleva etiqueta proviene de la V1 y no cambió.
 
 ## Convenciones del modelo
 
@@ -12,6 +19,9 @@ Todo el modelo vive en el esquema `gestion_fondos` de PostgreSQL (>= 13).
 | Estados de ciclo de vida | `ENUM` nativo de PostgreSQL — integridad garantizada por el motor sin tablas ni joins extra |
 | Auditoría básica | `created_at` / `updated_at` (`TIMESTAMPTZ`) en tablas transaccionales principales; `updated_at` se mantiene con trigger genérico |
 | Documentos adjuntos | Se almacena la URL/ruta del archivo (`VARCHAR`), no el binario — el almacenamiento físico se asume externo (bucket/file server) |
+| Roles de equipo de proyecto (`V2`) | Migrados de `ENUM` a tabla catálogo `cat_roles_proyecto` — la lista institucional es más larga y sigue creciendo |
+| Cambios de nomenclatura en ENUM (`V2`) | `ALTER TYPE ... RENAME VALUE` — conserva el OID interno (filas y `DEFAULT` existentes intactos), solo cambia la etiqueta |
+| Totales calculados (`V2`) | `presupuesto_total` es columna `GENERATED ALWAYS AS (...) STORED` — evita inconsistencias entre el desglose y el total |
 
 Leyenda de columna **Tipo**: `C` = tabla Catálogo (paramétrica), `T` = tabla Transaccional.
 
@@ -19,9 +29,11 @@ Leyenda de columna **Tipo**: `C` = tabla Catálogo (paramétrica), `T` = tabla T
 
 ## Índice de tablas
 
+### Heredadas de V1 (algunas modificadas en V2, ver marca)
+
 | # | Tabla | Tipo | Propósito |
 |---|---|---|---|
-| 1 | `cat_roles` | C | Roles del sistema |
+| 1 | `cat_roles` | C | Roles del sistema (Investigador, Director, UGI, Administrador) |
 | 2 | `cat_paises` | C | Países (ISO) |
 | 3 | `cat_departamentos` | C | Departamentos/Centros académicos |
 | 4 | `cat_entidades_financiadoras` | C | Instituciones externas que financian |
@@ -32,12 +44,12 @@ Leyenda de columna **Tipo**: `C` = tabla Catálogo (paramétrica), `T` = tabla T
 | 9 | `usuarios` | T | Personas del sistema (docentes, directores, UGI) |
 | 10 | `usuario_roles` | T | Asignación de roles a usuarios (N:M) |
 | 11 | `convocatorias` | T | Banco de oportunidades |
-| 12 | `proyectos` | T | Proyecto de investigación con financiamiento externo |
+| 12 | `proyectos` | T | Proyecto de investigación con financiamiento externo — **modificada `V2`** (metadatos académicos, ODS, presupuesto) |
 | 13 | `proyecto_aprobaciones` | T | Flujo de aprobación Departamento → UGI |
 | 14 | `proyecto_requisitos_documentales` | T | Checklist documental por proyecto |
-| 15 | `proyecto_equipo` | T | Equipo investigador del proyecto |
+| 15 | `proyecto_equipo` | T | Equipo investigador del proyecto — **modificada `V2`** (roles ampliados + miembros externos) |
 | 16 | `liberacion_horas` | T | Horas liberadas a docentes por periodo académico |
-| 17 | `hitos` | T | Hitos del proyecto (Gantt) |
+| 17 | `hitos` | T | Hitos del proyecto (Gantt) — **modificada `V2`** (vínculo a objetivo específico) |
 | 18 | `tareas` | T | Tareas dentro de cada hito (Gantt) |
 | 19 | `periodos_reporte` | T | Definición de cortes de informes (calendario dual) |
 | 20 | `informes_seguimiento` | T | Informes técnico-financieros presentados |
@@ -49,6 +61,32 @@ Leyenda de columna **Tipo**: `C` = tabla Catálogo (paramétrica), `T` = tabla T
 | 26 | `indice_h_historico` | T | Histórico del índice H por investigador |
 | 27 | `proyecto_instituciones_socias` | T | Cooperación internacional del proyecto (N:M) |
 | 28 | `eventos_notificacion` | T | Cola de alertas/notificaciones |
+
+### Incorporadas en V2
+
+| # | Tabla | Tipo | Propósito |
+|---|---|---|---|
+| 29 | `cat_roles_proyecto` | C | Roles del equipo de investigación (Director, Codirector, Investigador Asociado, etc.) |
+| 30 | `cat_programas_postgrado` | C | Programas de posgrado a los que puede vincularse un proyecto |
+| 31 | `cat_dominios_academicos` | C | Dominios académicos institucionales |
+| 32 | `cat_lineas_investigacion` | C | Líneas de investigación (hijas de un dominio académico) |
+| 33 | `cat_grupos_investigacion` | C | Grupos de investigación institucionales (ej. GEA) |
+| 34 | `cat_tipos_investigacion` | C | Tipos de investigación (Científica, Aplicada, ...) |
+| 35 | `cat_disciplinas_cientificas` | C | Disciplinas científicas (clasificación OCDE/Frascati) |
+| 36 | `cat_objetivos_socioeconomicos` | C | Objetivos socioeconómicos (clasificación NABS) |
+| 37 | `cat_areas_conocimiento_espe` | C | Áreas de conocimiento propias de la ESPE |
+| 38 | `cat_areas_unesco` | C | Áreas de conocimiento UNESCO |
+| 39 | `cat_subareas_unesco` | C | Sub-áreas UNESCO (hijas de un área UNESCO) |
+| 40 | `cat_campos_amplios` | C | Campo Amplio (clasificación tipo CINE/SENESCYT) |
+| 41 | `cat_campos_especificos` | C | Campo Específico (hijo de un campo amplio) |
+| 42 | `cat_campos_detallados` | C | Campo Detallado (hijo de un campo específico) |
+| 43 | `cat_ods` | C | Objetivos de Desarrollo Sostenible (17 ODS) |
+| 44 | `cat_ods_metas` | C | Metas de cada ODS |
+| 45 | `proyecto_ods_metas` | T | Alineación del proyecto a una o varias metas ODS (N:M) |
+| 46 | `proyecto_formulacion` | T | Texto largo de formulación del proyecto (1:1 con `proyectos`) |
+| 47 | `proyecto_objetivos` | T | Objetivo general y objetivos específicos del proyecto |
+| 48 | `proyecto_riesgos` | T | Matriz de riesgos del proyecto |
+| 49 | `proyecto_impactos` | T | Análisis de impactos esperados del proyecto |
 
 ---
 
@@ -180,7 +218,7 @@ Banco de oportunidades: convocatorias publicadas por una entidad financiadora.
 | `estado` | ENUM `estado_convocatoria` | — | `ABIERTA` / `CERRADA` / `ANULADA` |
 | `created_at` / `updated_at` | TIMESTAMPTZ | — | Auditoría |
 
-## 12. `proyectos` — Tipo: **T** (tabla central)
+## 12. `proyectos` — Tipo: **T** (tabla central) — modificada `V2`
 Proyecto de investigación con financiamiento externo, desde su postulación hasta el cierre.
 
 | Columna | Tipo | Relación | Descripción / Regla de negocio |
@@ -189,17 +227,33 @@ Proyecto de investigación con financiamiento externo, desde su postulación has
 | `codigo_proyecto` | VARCHAR(50) UNIQUE | — | Código institucional del proyecto |
 | `convocatoria_id` | UUID NOT NULL | FK → `convocatorias.id` | Convocatoria a la que se postuló |
 | `titulo` / `resumen` | VARCHAR/TEXT | — | Datos descriptivos |
-| `investigador_principal_id` | UUID NOT NULL | FK → `usuarios.id` | Responsable del proyecto |
+| `titulo_ingles` `V2` | VARCHAR(300) | — | Título del proyecto en inglés, exigido por el formato oficial |
+| `investigador_principal_id` | UUID NOT NULL | FK → `usuarios.id` | Responsable del proyecto (rol `DIRECTOR` en `proyecto_equipo`) |
 | `departamento_id` | INTEGER NOT NULL | FK → `cat_departamentos.id` | Departamento que avala (define quién es el Director aprobador) |
+| `programa_postgrado_id` `V2` | INTEGER | FK → `cat_programas_postgrado.id` | Programa de posgrado vinculado (**opcional**) |
+| `linea_investigacion_id` `V2` | INTEGER NOT NULL | FK → `cat_lineas_investigacion.id` | Línea de investigación; el dominio académico es derivable vía `cat_lineas_investigacion.dominio_academico_id` |
+| `grupo_investigacion_id` `V2` | INTEGER NOT NULL | FK → `cat_grupos_investigacion.id` | Grupo de investigación institucional (ej. GEA) |
+| `tipo_investigacion_id` `V2` | INTEGER NOT NULL | FK → `cat_tipos_investigacion.id` | Científica, Aplicada, Tecnológica, Formativa |
+| `disciplina_cientifica_id` `V2` | INTEGER NOT NULL | FK → `cat_disciplinas_cientificas.id` | Clasificación OCDE/Frascati |
+| `objetivo_socioeconomico_id` `V2` | INTEGER NOT NULL | FK → `cat_objetivos_socioeconomicos.id` | Clasificación NABS |
+| `area_conocimiento_espe_id` `V2` | INTEGER NOT NULL | FK → `cat_areas_conocimiento_espe.id` | Área de conocimiento propia de la ESPE |
+| `subarea_unesco_id` `V2` | INTEGER NOT NULL | FK → `cat_subareas_unesco.id` | Sub-área UNESCO; el área UNESCO padre es derivable vía `cat_subareas_unesco.area_unesco_id` |
+| `campo_detallado_id` `V2` | INTEGER NOT NULL | FK → `cat_campos_detallados.id` | Campo Detallado; Campo Específico y Campo Amplio son derivables por la cadena de FKs |
 | `fecha_adjudicacion_externa` | DATE NOT NULL | — | Fecha en que la entidad externa adjudica el proyecto; dispara el conteo de 60 días |
 | `fecha_limite_registro` | DATE | — | **Calculada automáticamente** por trigger (`fn_sumar_dias_habiles`, +60 días laborables desde `fecha_adjudicacion_externa`) |
 | `fecha_registro` | DATE | — | Fecha real en que se completó el registro en el sistema |
-| `presupuesto_total` / `presupuesto_financiamiento_externo` / `presupuesto_contraparte_universidad` | NUMERIC(14,2) | — | Todos `CHECK >= 0` |
+| `presupuesto_inversion_espe` `V2` | NUMERIC(14,2) NOT NULL DEFAULT 0 | — | `CHECK >= 0`; rubro de inversión aportado por la ESPE |
+| `presupuesto_corriente_espe` `V2` | NUMERIC(14,2) NOT NULL DEFAULT 0 | — | `CHECK >= 0`; rubro corriente aportado por la ESPE |
+| `presupuesto_inversion_auspiciante` `V2` | NUMERIC(14,2) NOT NULL DEFAULT 0 | — | `CHECK >= 0`; rubro de inversión aportado por la entidad auspiciante (externa) |
+| `presupuesto_corriente_auspiciante` `V2` | NUMERIC(14,2) NOT NULL DEFAULT 0 | — | `CHECK >= 0`; rubro corriente aportado por la entidad auspiciante |
+| `presupuesto_total` | NUMERIC(14,2) **`GENERATED ALWAYS AS (...) STORED`** `V2` | — | Suma automática de los 4 rubros anteriores; en V1 era un campo editable manualmente, en V2 se recalcula por el motor para garantizar consistencia |
 | `fecha_inicio_ejecucion` / `fecha_fin_planificada` / `fecha_fin_real` | DATE | — | `CHECK (fecha_fin_planificada >= fecha_inicio_ejecucion)` cuando ambas existen |
-| `estado` | ENUM `estado_proyecto` | — | `BORRADOR → POSTULADO → EN_APROBACION_DEPARTAMENTO → EN_APROBACION_UGI → APROBADO → EN_EJECUCION → EN_CIERRE → CERRADO`, con bifurcaciones a `RECHAZADO` y `BLOQUEADO` |
+| `estado` | ENUM `estado_proyecto` | — | `EN_EDICION → POSTULADO → EN_REVISION_DEPARTAMENTAL → EN_REVISION_UGI → APROBADO → EN_EJECUCION → EN_CIERRE → CERRADO`, con bifurcaciones a `RECHAZADO` y `BLOQUEADO`. **`V2`**: `BORRADOR`, `EN_APROBACION_DEPARTAMENTO` y `EN_APROBACION_UGI` fueron renombrados (`ALTER TYPE ... RENAME VALUE`) a `EN_EDICION`, `EN_REVISION_DEPARTAMENTAL` y `EN_REVISION_UGI` para alinearse a la nomenclatura del reporte Excel institucional; el `DEFAULT` y las filas existentes no requieren migración porque el renombrado conserva el OID interno del valor |
 | `created_at` / `updated_at` | TIMESTAMPTZ | — | Auditoría |
 
-**Reglas de negocio clave:** al insertarse, un trigger `BEFORE INSERT` calcula `fecha_limite_registro`; un segundo trigger `AFTER INSERT` programa automáticamente el evento de alerta de vencimiento (`eventos_notificacion`) 5 días antes de esa fecha.
+**Reglas de negocio clave:** al insertarse, un trigger `BEFORE INSERT` calcula `fecha_limite_registro`; un segundo trigger `AFTER INSERT` programa automáticamente el evento de alerta de vencimiento (`eventos_notificacion`) 5 días antes de esa fecha. Las columnas de clasificación académica marcadas `NOT NULL` se respaldaron (`backfill`) en proyectos preexistentes con el primer valor de su catálogo respectivo al migrar; se recomienda que el equipo de investigación actualice la clasificación real desde la aplicación (ver `database/02_migracion_v1_a_v2.sql`, sección 2).
+
+**Metadatos académicos/científicos relacionados por fuera de esta tabla:** el texto largo de formulación vive en `proyecto_formulacion` (1:1), los objetivos en `proyecto_objetivos`, la matriz de riesgos en `proyecto_riesgos`, el análisis de impactos en `proyecto_impactos`, y la alineación a los ODS en `proyecto_ods_metas` — ver secciones 45-49.
 
 ## 13. `proyecto_aprobaciones` — Tipo: **T**
 Registra el flujo de aprobación en dos niveles obligatorios y secuenciales.
@@ -230,17 +284,29 @@ Checklist de los 6 requisitos documentales por proyecto.
 | `observaciones` | TEXT | — | Feedback de la UGI/Director |
 | — | UNIQUE(`proyecto_id`,`tipo_requisito_id`) | — | Un registro por requisito y proyecto (garantiza los 6 exactos) |
 
-## 15. `proyecto_equipo` — Tipo: **T**
-Equipo investigador asignado a cada proyecto.
+## 15. `proyecto_equipo` — Tipo: **T** — modificada `V2`
+Equipo investigador asignado a cada proyecto. **`V2`**: admite miembros internos (usuarios ESPE) y miembros externos
+(investigadores de otra institución) sin obligar a estos últimos a tener un departamento interno.
 
 | Columna | Tipo | Relación | Descripción / Regla de negocio |
 |---|---|---|---|
 | `id` | UUID PK | — | Identificador |
 | `proyecto_id` | UUID NOT NULL | FK → `proyectos.id` ON DELETE CASCADE | Proyecto |
-| `usuario_id` | UUID NOT NULL | FK → `usuarios.id` | Miembro del equipo |
-| `rol` | ENUM `rol_proyecto` | — | `INVESTIGADOR_PRINCIPAL` / `COINVESTIGADOR` / `COLABORADOR` |
+| `rol_proyecto_id` `V2` | INTEGER NOT NULL | FK → `cat_roles_proyecto.id` | Reemplaza al `ENUM rol_proyecto` de la V1 |
+| `usuario_id` | UUID **NULL** (relajado en `V2`) | FK → `usuarios.id` | Miembro interno (ESPE); `NULL` si el miembro es externo |
+| `externo_identificacion` `V2` | VARCHAR(20) | — | Cédula/identificación del investigador externo; `NULL` si es interno |
+| `externo_nombres` / `externo_apellidos` `V2` | VARCHAR(150) | — | Nombre del investigador externo; `NULL` si es interno |
+| `externo_institucion_id` `V2` | INTEGER | FK → `cat_instituciones_socias.id` | Institución de origen del externo (reutiliza el catálogo de cooperación internacional) |
+| `externo_correo` `V2` | VARCHAR(150) | — | Correo de contacto del externo (opcional) |
 | `fecha_incorporacion` / `fecha_salida` | DATE | — | Vigencia de la participación |
-| — | UNIQUE(`proyecto_id`,`usuario_id`) | — | Una persona no se duplica en el mismo proyecto |
+| — | `CHECK` interno **XOR** externo `V2` | — | Exactamente uno de los dos conjuntos de columnas (`usuario_id`) o (`externo_identificacion`+`externo_nombres`+`externo_apellidos`) debe estar completo |
+| — | Índice único parcial `(proyecto_id, usuario_id) WHERE usuario_id IS NOT NULL` `V2` | — | Reemplaza la `UNIQUE(proyecto_id, usuario_id)` de la V1 (que no admitía múltiples filas con `usuario_id NULL`) |
+| — | Índice único parcial `(proyecto_id, externo_identificacion) WHERE externo_identificacion IS NOT NULL` `V2` | — | Evita duplicar al mismo externo en un proyecto |
+
+**Nota de diseño:** `cat_roles_proyecto.permite_externo` es un metadato informativo (para filtrar en la UI qué roles son típicamente
+externos, ej. `INVESTIGADOR_ASOCIADO`) y **no se fuerza con un trigger**: en un sistema de cooperación internacional es plausible
+que un `CODIRECTOR` también sea externo (ej. un socio de Horizon Europe), así que la única regla dura de negocio es el `CHECK`
+interno/externo, no la combinación rol↔origen.
 
 ## 16. `liberacion_horas` — Tipo: **T**
 Horas que la universidad libera a un docente (deja de dictar clase) para dedicarlas al proyecto, por periodo académico.
@@ -258,7 +324,7 @@ Horas que la universidad libera a un docente (deja de dictar clase) para dedicar
 | `aprobado_por` / `fecha_aprobacion` | UUID / TIMESTAMPTZ | FK → `usuarios.id` | Aprobación (Director/UGI) |
 | — | UNIQUE(`proyecto_id`,`usuario_id`,`periodo_academico_id`) | — | Una liberación por persona/proyecto/semestre; se reporta y justifica vía `informes_seguimiento` de calendario `INTERNO` |
 
-## 17. `hitos` — Tipo: **T**
+## 17. `hitos` — Tipo: **T** — modificada `V2`
 Hitos del proyecto (nivel superior del Gantt).
 
 | Columna | Tipo | Relación | Descripción / Regla de negocio |
@@ -267,13 +333,16 @@ Hitos del proyecto (nivel superior del Gantt).
 | `proyecto_id` | UUID NOT NULL | FK → `proyectos.id` ON DELETE CASCADE | Proyecto |
 | `nombre` / `descripcion` | VARCHAR/TEXT | — | Datos descriptivos |
 | `orden` | SMALLINT | — | Orden de despliegue en el Gantt |
+| `objetivo_especifico_id` `V2` | UUID | FK → `proyecto_objetivos.id` | Objetivo específico que el hito ayuda a cumplir (opcional) |
 | `fecha_inicio_planificada` / `fecha_fin_planificada` | DATE NOT NULL | — | `CHECK (fin >= inicio)` |
 | `fecha_inicio_real` / `fecha_fin_real` | DATE | — | Ejecución real |
 | `porcentaje_avance` | SMALLINT DEFAULT 0 | — | `CHECK BETWEEN 0 AND 100` |
 | `estado` | ENUM `estado_hito_tarea` | — | `NO_INICIADO` / `EN_PROGRESO` / `COMPLETADO` / `ATRASADO` / `CANCELADO` |
 | `created_at` / `updated_at` | TIMESTAMPTZ | — | Auditoría |
 
-**Regla de negocio:** trigger `trg_bloqueo_hitos` impide `INSERT`/`UPDATE` si el proyecto está `BLOQUEADO`.
+**Reglas de negocio:** trigger `trg_bloqueo_hitos` impide `INSERT`/`UPDATE` si el proyecto está `BLOQUEADO`. Trigger `trg_hitos_valida_objetivo`
+(`V2`) impide asignar un `objetivo_especifico_id` que no pertenezca al mismo `proyecto_id` o que no sea de `tipo_objetivo = 'ESPECIFICO'`
+(validación que un `FK` simple no puede expresar).
 
 ## 18. `tareas` — Tipo: **T**
 Tareas dentro de cada hito (nivel de detalle del Gantt): tiempos, recursos y avance.
@@ -440,6 +509,231 @@ Cola de alertas/notificaciones automáticas del sistema (vencimiento de 60 días
 
 ---
 
+## Tablas incorporadas en V2
+
+## 29. `cat_roles_proyecto` — Tipo: **C** `V2`
+Catálogo de roles del equipo de investigación de un proyecto. Reemplaza al `ENUM rol_proyecto` de la V1: la lista institucional
+(Director, Codirector, Investigador Interno, Investigador Asociado, Apoyo, Asistente y Ayudante de Investigación) es más larga
+y puede seguir creciendo sin requerir una migración de esquema.
+
+| Columna | Tipo | Relación | Descripción / Regla de negocio |
+|---|---|---|---|
+| `id` | SERIAL PK | — | Identificador |
+| `codigo` | VARCHAR(40) UNIQUE | — | `DIRECTOR`, `CODIRECTOR`, `INVESTIGADOR_INTERNO`, `INVESTIGADOR_ASOCIADO`, `APOYO`, `ASISTENTE_INVESTIGACION`, `AYUDANTE_INVESTIGACION` |
+| `nombre` | VARCHAR(100) | — | Nombre visible del rol |
+| `descripcion` | TEXT | — | Detalle del rol |
+| `permite_externo` | BOOLEAN DEFAULT FALSE | — | Metadato informativo para la UI (ver nota en la sección 15, `proyecto_equipo`); no se aplica como restricción dura |
+| `orden` | SMALLINT | — | Orden de despliegue |
+
+## 30. `cat_programas_postgrado` — Tipo: **C** `V2`
+Programas de posgrado de la ESPE a los que un proyecto puede vincularse opcionalmente.
+
+| Columna | Tipo | Relación | Descripción / Regla de negocio |
+|---|---|---|---|
+| `id` | SERIAL PK | — | Identificador |
+| `nombre` | VARCHAR(200) UNIQUE | — | Nombre del programa |
+
+## 31. `cat_dominios_academicos` — Tipo: **C** `V2`
+Dominios académicos institucionales; nivel superior de la jerarquía Dominio → Línea de investigación.
+
+| Columna | Tipo | Relación | Descripción / Regla de negocio |
+|---|---|---|---|
+| `id` | SERIAL PK | — | Identificador |
+| `nombre` | VARCHAR(200) UNIQUE | — | Nombre del dominio |
+
+## 32. `cat_lineas_investigacion` — Tipo: **C** `V2`
+Líneas de investigación, hijas de un dominio académico.
+
+| Columna | Tipo | Relación | Descripción / Regla de negocio |
+|---|---|---|---|
+| `id` | SERIAL PK | — | Identificador |
+| `dominio_academico_id` | INTEGER NOT NULL | FK → `cat_dominios_academicos.id` | Dominio al que pertenece |
+| `nombre` | VARCHAR(200) | — | UNIQUE(`dominio_academico_id`,`nombre`) |
+
+## 33. `cat_grupos_investigacion` — Tipo: **C** `V2`
+Grupos de investigación institucionales (ej. GEA — Economía y Administración).
+
+| Columna | Tipo | Relación | Descripción / Regla de negocio |
+|---|---|---|---|
+| `id` | SERIAL PK | — | Identificador |
+| `codigo` | VARCHAR(20) UNIQUE | — | Sigla del grupo (ej. `GEA`) |
+| `nombre` | VARCHAR(200) | — | Nombre completo |
+| `departamento_id` | INTEGER | FK → `cat_departamentos.id` | Departamento al que se adscribe el grupo (opcional) |
+
+## 34. `cat_tipos_investigacion` — Tipo: **C** `V2`
+Tipos de investigación (Científica, Aplicada, Tecnológica, Formativa).
+
+| Columna | Tipo | Relación | Descripción / Regla de negocio |
+|---|---|---|---|
+| `id` | SERIAL PK | — | Identificador |
+| `nombre` | VARCHAR(100) UNIQUE | — | Nombre del tipo |
+
+## 35. `cat_disciplinas_cientificas` — Tipo: **C** `V2`
+Disciplinas científicas según la clasificación OCDE/Manual de Frascati.
+
+| Columna | Tipo | Relación | Descripción / Regla de negocio |
+|---|---|---|---|
+| `id` | SERIAL PK | — | Identificador |
+| `nombre` | VARCHAR(150) UNIQUE | — | Nombre de la disciplina |
+
+## 36. `cat_objetivos_socioeconomicos` — Tipo: **C** `V2`
+Objetivos socioeconómicos según la clasificación NABS.
+
+| Columna | Tipo | Relación | Descripción / Regla de negocio |
+|---|---|---|---|
+| `id` | SERIAL PK | — | Identificador |
+| `nombre` | VARCHAR(200) UNIQUE | — | Nombre del objetivo socioeconómico |
+
+## 37. `cat_areas_conocimiento_espe` — Tipo: **C** `V2`
+Áreas de conocimiento propias de la clasificación interna de la ESPE (independiente de UNESCO).
+
+| Columna | Tipo | Relación | Descripción / Regla de negocio |
+|---|---|---|---|
+| `id` | SERIAL PK | — | Identificador |
+| `nombre` | VARCHAR(150) UNIQUE | — | Nombre del área |
+
+## 38. `cat_areas_unesco` — Tipo: **C** `V2`
+Áreas de conocimiento según la Nomenclatura UNESCO; nivel superior de la jerarquía Área → Sub-área.
+
+| Columna | Tipo | Relación | Descripción / Regla de negocio |
+|---|---|---|---|
+| `id` | SERIAL PK | — | Identificador |
+| `codigo` | VARCHAR(10) UNIQUE | — | Código UNESCO (ej. `1`, `2`, ...) |
+| `nombre` | VARCHAR(200) | — | Nombre del área |
+
+## 39. `cat_subareas_unesco` — Tipo: **C** `V2`
+Sub-áreas UNESCO, hijas de un área UNESCO.
+
+| Columna | Tipo | Relación | Descripción / Regla de negocio |
+|---|---|---|---|
+| `id` | SERIAL PK | — | Identificador |
+| `area_unesco_id` | INTEGER NOT NULL | FK → `cat_areas_unesco.id` | Área UNESCO padre |
+| `codigo` | VARCHAR(10) UNIQUE | — | Código de la sub-área (ej. `1.02`) |
+| `nombre` | VARCHAR(200) | — | Nombre de la sub-área |
+
+## 40. `cat_campos_amplios` — Tipo: **C** `V2`
+Campo Amplio de la clasificación tipo CINE/SENESCYT; nivel superior de la jerarquía Campo Amplio → Específico → Detallado.
+
+| Columna | Tipo | Relación | Descripción / Regla de negocio |
+|---|---|---|---|
+| `id` | SERIAL PK | — | Identificador |
+| `codigo` | VARCHAR(10) UNIQUE | — | Código del campo amplio |
+| `nombre` | VARCHAR(200) | — | Nombre del campo amplio |
+
+## 41. `cat_campos_especificos` — Tipo: **C** `V2`
+Campo Específico, hijo de un Campo Amplio.
+
+| Columna | Tipo | Relación | Descripción / Regla de negocio |
+|---|---|---|---|
+| `id` | SERIAL PK | — | Identificador |
+| `campo_amplio_id` | INTEGER NOT NULL | FK → `cat_campos_amplios.id` | Campo amplio padre |
+| `codigo` | VARCHAR(10) UNIQUE | — | Código del campo específico |
+| `nombre` | VARCHAR(200) | — | Nombre del campo específico |
+
+## 42. `cat_campos_detallados` — Tipo: **C** `V2`
+Campo Detallado, hijo de un Campo Específico. Es el nivel que efectivamente se asigna a `proyectos.campo_detallado_id`; el
+Campo Específico y el Campo Amplio son derivables por la cadena de claves foráneas.
+
+| Columna | Tipo | Relación | Descripción / Regla de negocio |
+|---|---|---|---|
+| `id` | SERIAL PK | — | Identificador |
+| `campo_especifico_id` | INTEGER NOT NULL | FK → `cat_campos_especificos.id` | Campo específico padre |
+| `codigo` | VARCHAR(10) UNIQUE | — | Código del campo detallado |
+| `nombre` | VARCHAR(200) | — | Nombre del campo detallado |
+
+## 43. `cat_ods` — Tipo: **C** `V2`
+Los 17 Objetivos de Desarrollo Sostenible de Naciones Unidas.
+
+| Columna | Tipo | Relación | Descripción / Regla de negocio |
+|---|---|---|---|
+| `id` | SERIAL PK | — | Identificador |
+| `numero` | SMALLINT UNIQUE | — | `CHECK BETWEEN 1 AND 17` |
+| `nombre` | VARCHAR(200) | — | Nombre oficial del ODS |
+
+## 44. `cat_ods_metas` — Tipo: **C** `V2`
+Metas de cada ODS (ej. meta `4.3` del ODS 4). Se sembraron metas representativas; el catálogo completo (~169 metas) se cargaría
+de la nomenclatura oficial de Naciones Unidas en un ambiente productivo.
+
+| Columna | Tipo | Relación | Descripción / Regla de negocio |
+|---|---|---|---|
+| `id` | SERIAL PK | — | Identificador |
+| `ods_id` | INTEGER NOT NULL | FK → `cat_ods.id` | ODS al que pertenece la meta |
+| `codigo` | VARCHAR(10) | — | Código de la meta (ej. `4.3`); UNIQUE(`ods_id`,`codigo`) |
+| `descripcion` | TEXT NOT NULL | — | Texto oficial de la meta |
+
+## 45. `proyecto_ods_metas` — Tipo: **T** `V2`
+Alineación N:M del proyecto con una o varias metas ODS. El ODS padre de cada alineación es derivable vía `cat_ods_metas.ods_id`,
+por lo que un proyecto queda vinculado tanto a metas específicas como, indirectamente, a los ODS correspondientes.
+
+| Columna | Tipo | Relación | Descripción / Regla de negocio |
+|---|---|---|---|
+| `proyecto_id` | UUID | FK → `proyectos.id` ON DELETE CASCADE | Parte de PK compuesta |
+| `ods_meta_id` | INTEGER | FK → `cat_ods_metas.id` | Parte de PK compuesta |
+
+## 46. `proyecto_formulacion` — Tipo: **T** `V2`
+Texto largo de formulación del proyecto, en relación **1:1** con `proyectos` (comparte la misma PK). Se separó de `proyectos`
+para no sobrecargar la tabla central con columnas de texto extenso de uso menos frecuente en consultas transaccionales.
+
+| Columna | Tipo | Relación | Descripción / Regla de negocio |
+|---|---|---|---|
+| `proyecto_id` | UUID PK | FK → `proyectos.id` ON DELETE CASCADE | Comparte PK con `proyectos` (relación 1:1) |
+| `diagnostico_problema` | TEXT | — | Diagnóstico del problema que motiva el proyecto |
+| `linea_base` | TEXT | — | Línea base / situación actual |
+| `metodologia_investigacion` | TEXT | — | Metodología de investigación a emplear |
+| `viabilidad_tecnica` | TEXT | — | Análisis de viabilidad técnica |
+| `estrategia_difusion_transferencia` | TEXT | — | Estrategia de difusión y transferencia de resultados |
+| `updated_at` | TIMESTAMPTZ | — | Auditoría, mantenida por trigger |
+
+## 47. `proyecto_objetivos` — Tipo: **T** `V2`
+Objetivo general y objetivos específicos del proyecto, con indicador y meta. Los `hitos` pueden vincularse a un objetivo
+específico (ver sección 17).
+
+| Columna | Tipo | Relación | Descripción / Regla de negocio |
+|---|---|---|---|
+| `id` | UUID PK | — | Identificador |
+| `proyecto_id` | UUID NOT NULL | FK → `proyectos.id` ON DELETE CASCADE | Proyecto |
+| `tipo_objetivo` | ENUM `tipo_objetivo_proyecto` | — | `GENERAL` / `ESPECIFICO` |
+| `objetivo_general_id` | UUID | FK → `proyecto_objetivos.id` ON DELETE CASCADE (autorreferencia) | Objetivo general al que pertenece; obligatorio si `tipo_objetivo = 'ESPECIFICO'`, `NULL` si `tipo_objetivo = 'GENERAL'` |
+| `descripcion` | TEXT NOT NULL | — | Enunciado del objetivo |
+| `indicador` | TEXT | — | Indicador de cumplimiento |
+| `meta` | TEXT | — | Meta/valor esperado del indicador |
+| `orden` | SMALLINT | — | Orden de despliegue |
+| — | `CHECK` tipo↔padre | — | `(GENERAL, objetivo_general_id NULL)` o `(ESPECIFICO, objetivo_general_id NOT NULL)` |
+
+**Regla de negocio:** trigger `trg_objetivos_valida_general` verifica que, cuando `tipo_objetivo = 'ESPECIFICO'`, el
+`objetivo_general_id` referenciado exista, sea de `tipo_objetivo = 'GENERAL'` y pertenezca al **mismo proyecto** — una
+validación de consistencia entre filas que un `CHECK` o `FK` simples no pueden expresar.
+
+## 48. `proyecto_riesgos` — Tipo: **T** `V2`
+Matriz de riesgos del proyecto.
+
+| Columna | Tipo | Relación | Descripción / Regla de negocio |
+|---|---|---|---|
+| `id` | UUID PK | — | Identificador |
+| `proyecto_id` | UUID NOT NULL | FK → `proyectos.id` ON DELETE CASCADE | Proyecto |
+| `objetivo_afectado_id` | UUID | FK → `proyecto_objetivos.id` | Objetivo (general o específico) afectado por el riesgo (opcional) |
+| `riesgo` | TEXT NOT NULL | — | Descripción del riesgo |
+| `probabilidad` | ENUM `nivel_riesgo` | — | `ALTO` / `MEDIO` / `BAJO` |
+| `impacto` | ENUM `nivel_riesgo` | — | `ALTO` / `MEDIO` / `BAJO` |
+| `accion_mitigacion` | TEXT NOT NULL | — | Acción de mitigación propuesta |
+| `created_at` | TIMESTAMPTZ | — | Auditoría |
+
+**Regla de negocio:** trigger `trg_riesgos_valida_objetivo` verifica que, si se indica `objetivo_afectado_id`, este pertenezca
+al mismo `proyecto_id` que el riesgo.
+
+## 49. `proyecto_impactos` — Tipo: **T** `V2`
+Análisis de impactos esperados del proyecto.
+
+| Columna | Tipo | Relación | Descripción / Regla de negocio |
+|---|---|---|---|
+| `id` | UUID PK | — | Identificador |
+| `proyecto_id` | UUID NOT NULL | FK → `proyectos.id` ON DELETE CASCADE | Proyecto |
+| `categoria` | ENUM `categoria_impacto` | — | `SOCIAL` / `CIENTIFICO` / `ECONOMICO` / `POLITICO` / `AMBIENTAL` / `SOSTENIBILIDAD_GENERO` |
+| `descripcion` | TEXT NOT NULL | — | Descripción del impacto esperado |
+| `created_at` | TIMESTAMPTZ | — | Auditoría |
+
+---
+
 ## Notas de diseño adicionales
 
 - **Trazabilidad del flujo de aprobación:** `proyecto_aprobaciones` modela explícitamente los dos niveles (`DEPARTAMENTO`, `UGI|`) como filas independientes, permitiendo auditar quién aprobó, cuándo y con qué observaciones en cada nivel, en vez de usar solo un campo de estado en `proyectos`.
@@ -447,3 +741,32 @@ Cola de alertas/notificaciones automáticas del sistema (vencimiento de 60 días
 - **Calendario dual de informes:** en vez de duplicar columnas "fecha corte externo" / "fecha corte interno" en `proyectos`, se modela como una tabla `periodos_reporte` con un `CHECK` que obliga a que cada período sea exclusivamente externo (atado a la entidad financiadora) o interno (atado al periodo académico), permitiendo agregar nuevas entidades o semestres sin migrar el esquema.
 - **Bloqueo por incumplimiento:** en vez de solo un valor de estado, se refuerza con triggers (`fn_validar_proyecto_no_bloqueado`) que impiden operaciones de avance (hitos, informes) mientras el proyecto esté `BLOQUEADO`, forzando el paso por el proceso de `prorrogas`.
 - **Extensibilidad de catálogos:** todas las tablas `cat_*` están diseñadas para crecer sin cambios de esquema (nuevas entidades financiadoras, países, tipos de requisito, tipos de alerta), característica clave para un sistema institucional de largo plazo.
+
+### Notas de la migración V2
+
+- **ENUM → catálogo (`rol_proyecto`):** en V1 los roles del equipo eran un `ENUM` de 3 valores; el formato oficial exige 7 roles
+  institucionales y es previsible que la lista siga cambiando, por lo que se migró a `cat_roles_proyecto`. La migración mapea
+  `INVESTIGADOR_PRINCIPAL → DIRECTOR`, `COINVESTIGADOR → INVESTIGADOR_INTERNO`, `COLABORADOR → APOYO` antes de eliminar el
+  `ENUM` original.
+- **Investigadores externos:** en vez de crear una tabla paralela a `usuarios`, se optó por relajar `proyecto_equipo.usuario_id`
+  a `NULL` y añadir columnas `externo_*` con un `CHECK` XOR — el mismo patrón ya usado en `publicacion_autores` para autores
+  internos/externos de una publicación, manteniendo el modelo consistente.
+- **Jerarquías de clasificación (línea/dominio, UNESCO área/sub-área, campos amplio/específico/detallado):** se modelaron como
+  catálogos encadenados por FK (hijo → padre) en vez de columnas planas repetidas en `proyectos`, para que el nivel superior sea
+  siempre derivable por un `JOIN` y no pueda quedar inconsistente con el nivel inferior seleccionado.
+- **ODS con metas (no solo el ODS):** el requerimiento pide que el proyecto se alinee a metas concretas; `proyecto_ods_metas`
+  enlaza directamente a `cat_ods_metas`, y el ODS padre se obtiene por `JOIN` a través de `cat_ods_metas.ods_id` — evita
+  duplicar la relación a dos niveles (ODS y meta) para el mismo proyecto.
+- **`presupuesto_total` como columna generada:** en V1 era un campo editable manualmente que podía desincronizarse de sus
+  componentes; en V2, al desglosarse en 4 rubros obligatorios por el formato oficial, se recalcula con
+  `GENERATED ALWAYS AS (...) STORED`, eliminando la posibilidad de inconsistencia por diseño.
+- **Backfill de columnas `NOT NULL` nuevas en `proyectos`:** las 8 columnas de clasificación académica se agregaron primero
+  como nullable, se respaldaron con el primer valor de su catálogo y luego se marcaron `NOT NULL` — patrón estándar para
+  evolucionar un esquema con filas preexistentes sin downtime ni pérdida de datos.
+- **Renombrado de estados sin migrar datos:** `ALTER TYPE estado_proyecto RENAME VALUE` cambia solo la etiqueta visible de un
+  valor `ENUM` ya existente (conserva su OID interno), por lo que no requiere `UPDATE` sobre `proyectos.estado` ni redefinir
+  el `DEFAULT` de la columna.
+- **Por qué no se fuerza rol↔origen (interno/externo) en `proyecto_equipo`:** se decidió no añadir un trigger que exija, por
+  ejemplo, que solo `INVESTIGADOR_ASOCIADO` pueda ser externo, porque en cooperación internacional es razonable que otros
+  roles (p.ej. `CODIRECTOR`) también sean ocupados por personal de una institución socia; `cat_roles_proyecto.permite_externo`
+  queda como metadato para la UI, no como restricción de base de datos.
