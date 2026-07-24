@@ -113,7 +113,9 @@ function ResolverDialog({
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["proyecto-aprobaciones", proyectoId] });
-      queryClient.invalidateQueries({ queryKey: ["proyectos", proyectoId] });
+      // Amplio: la resolución cambia proyectos.estado, así que también refresca el
+      // listado de /proyectos y el badge del layout, no solo el detalle.
+      queryClient.invalidateQueries({ queryKey: ["proyectos"] });
       onClose();
     },
   });

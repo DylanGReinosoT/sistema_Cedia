@@ -57,7 +57,9 @@ export default function ProyectoOverviewPage({
   const updateMutation = useMutation({
     mutationFn: (values: ProyectoFormInput) => updateProyecto(id, values),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["proyectos", id] });
+      // Prefijo amplio: refresca tanto el detalle (["proyectos", id]) como el listado
+      // (["proyectos", {filtros}]) y el badge de estado del layout, en una sola invalidación.
+      queryClient.invalidateQueries({ queryKey: ["proyectos"] });
       setEditing(false);
     },
   });
@@ -65,14 +67,19 @@ export default function ProyectoOverviewPage({
   const submitMutation = useMutation({
     mutationFn: () => submitAprobacion(id),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["proyectos", id] });
+      // Prefijo amplio: refresca tanto el detalle (["proyectos", id]) como el listado
+      // (["proyectos", {filtros}]) y el badge de estado del layout, en una sola invalidación.
+      queryClient.invalidateQueries({ queryKey: ["proyectos"] });
       queryClient.invalidateQueries({ queryKey: ["proyecto-aprobaciones", id] });
     },
   });
 
   const deleteMutation = useMutation({
     mutationFn: () => deleteProyecto(id),
-    onSuccess: () => router.push("/proyectos"),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["proyectos"] });
+      router.push("/proyectos");
+    },
   });
 
   if (isLoading || !proyecto) return <LoadingState label="Cargando…" />;
@@ -265,7 +272,7 @@ function ReassignDialog({
   const mutation = useMutation({
     mutationFn: () => reassignInvestigadorPrincipal(proyectoId, selected),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["proyectos", proyectoId] });
+      queryClient.invalidateQueries({ queryKey: ["proyectos"] });
       onClose();
     },
   });

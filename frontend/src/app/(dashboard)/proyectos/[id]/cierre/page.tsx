@@ -64,7 +64,9 @@ function ProrrogasTab({ proyectoId }: { proyectoId: string }) {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["proyecto-prorrogas", proyectoId] });
-      queryClient.invalidateQueries({ queryKey: ["proyectos", proyectoId] });
+      // "Aplicar" prórroga desbloquea el proyecto (BLOQUEADO → EN_EJECUCION): refresca
+      // listado + detalle + badge del layout, no solo la pestaña de prórrogas.
+      queryClient.invalidateQueries({ queryKey: ["proyectos"] });
     },
   });
 
@@ -309,6 +311,8 @@ function CertificadoDialog({
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["proyecto-cierres", proyectoId] });
+      // Emitir el certificado suele finalizar el proyecto (estado → CERRADO).
+      queryClient.invalidateQueries({ queryKey: ["proyectos"] });
       onClose();
     },
   });
@@ -356,6 +360,7 @@ function ObservarDialog({
     mutationFn: () => observarCierre(proyectoId, cierre.id, { observaciones }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["proyecto-cierres", proyectoId] });
+      queryClient.invalidateQueries({ queryKey: ["proyectos"] });
       onClose();
     },
   });

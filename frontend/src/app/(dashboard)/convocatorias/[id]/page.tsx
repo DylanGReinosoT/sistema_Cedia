@@ -60,7 +60,7 @@ export default function ConvocatoriaDetailPage({
 
   const estadoMutation = useMutation({
     mutationFn: (estado: string) => updateConvocatoria(id, { estado: estado as never }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["convocatorias", id] }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["convocatorias"] }),
   });
 
   async function onSubmit(values: ConvocatoriaFormInput) {
@@ -72,7 +72,7 @@ export default function ConvocatoriaDetailPage({
         descripcion: values.descripcion || undefined,
         url_bases: values.url_bases || undefined,
       });
-      queryClient.invalidateQueries({ queryKey: ["convocatorias", id] });
+      queryClient.invalidateQueries({ queryKey: ["convocatorias"] });
     } catch (err) {
       setServerError(friendlyErrorMessage(err));
     }
