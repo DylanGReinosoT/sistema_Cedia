@@ -14,7 +14,8 @@
       "Bash(MSYS_NO_PATHCONV=1 docker exec -u postgres pg_test_espe psql -d espe -c \"SET search_path TO gestion_fondos, public; INSERT INTO hitos \\(proyecto_id, nombre, fecha_inicio_planificada, fecha_fin_planificada\\) SELECT id, 'Hito 1', '2026-07-01','2026-08-01' FROM proyectos WHERE codigo_proyecto='PRY-2026-001';\")",
       "Bash(awk '{print $3}')",
       "Bash(grep -oE '^## [0-9]+\\\\. `[a-z_]+`' \"./docs/diccionario_datos.md\")",
-      "Bash(grep -oE '`[a-z_]+`')"
+      "Bash(grep -oE '`[a-z_]+`')",
+      "Bash(awk '{print \"DROP TABLE IF EXISTS extensions.\" $3 \" CASCADE;\"}')"
     ],
     "additionalDirectories": [
       "C:\\Users\\Admin\\Desktop\\8VO SEMESTRE\\CONSTRUCCIÓN Y EVOLUCIÓN DEL SOFTWARE\\TERCER PARCIAL\\EXTRA\\sistema_Cedia"

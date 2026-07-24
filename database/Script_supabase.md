@@ -1,82 +1,37 @@
 -- =====================================================================================
 -- Sistema de Gestión de Fondos Externos y Cooperación Internacional - ESPE
--- Script DDL PostgreSQL (>= 13) — Versión 2
---
--- V2 incorpora, sobre el modelo original, los hallazgos de confrontar el diseño contra
--- el reporte Excel institucional de proyectos y el formato oficial (PDF) de formulación
--- de proyectos externos de la ESPE:
---   - Equipo de investigación ampliado (7 roles institucionales) con soporte de
---     investigadores externos sin usuario ni departamento interno.
---   - Metadatos académicos y científicos del proyecto (línea/dominio de investigación,
---     grupo de investigación, tipo de investigación, disciplina científica, objetivo
---     socioeconómico, clasificación UNESCO/ESPE, campos amplio/específico/detallado,
---     alineación a metas ODS).
---   - Desglose presupuestario en 4 rubros (inversión/corriente x ESPE/auspiciante) con
---     el total calculado automáticamente por el motor.
---   - Formulación extendida del proyecto: objetivo general/específicos, matriz de
---     riesgos, análisis de impactos y texto largo de formulación.
---   - Nomenclatura de estados alineada al reporte institucional (EN_EDICION,
---     EN_REVISION_DEPARTAMENTAL, EN_REVISION_UGI).
---
--- Decisiones de arquitectura:
---   1. Se usa un esquema dedicado "gestion_fondos" para aislar el modelo de datos.
---   2. PK de tablas CATÁLOGO (paramétricas, bajo volumen, cambian poco) -> SERIAL/INTEGER.
---   3. PK de tablas TRANSACCIONALES (operación diaria, se referencian en URLs,
---      certificados y podrían federarse entre sistemas) -> UUID (gen_random_uuid()).
---   4. Estados de ciclo de vida acotados y estables -> ENUM nativo de PostgreSQL
---      (control de integridad en el propio motor, sin joins adicionales).
---   5. Roles del equipo de proyecto -> tabla catálogo (no ENUM): la lista institucional
---      es larga (7 roles) y sigue creciendo; a diferencia de los estados de ciclo de
---      vida, no conviene fijarla en el esquema.
---   6. Jerarquías de clasificación (línea/dominio académico, área/sub-área UNESCO,
---      campo amplio/específico/detallado) -> catálogos encadenados por FK (hijo->padre)
---      en vez de columnas planas repetidas en "proyectos", para que el nivel superior
---      sea siempre derivable por JOIN y no pueda quedar inconsistente.
---   7. Toda tabla transaccional relevante incluye created_at/updated_at para auditoría
---      básica; updated_at se mantiene con un trigger genérico.
---
--- Notas de despliegue en Supabase:
---   - El script es re-ejecutable de punta a punta: empieza con DROP SCHEMA ... CASCADE
---     para poder correrlo varias veces sobre el mismo proyecto sin colisiones.
---   - En Supabase, pgcrypto (y sus funciones como gen_random_uuid()) vive en el esquema
---     "extensions", no en "public"; por eso "extensions" se agrega al search_path.
---   - IMPORTANTE: "gestion_fondos" va PRIMERO en el search_path. Postgres crea todo
---     objeto sin esquema explícito (CREATE TABLE, CREATE INDEX, ...) en el PRIMER
---     esquema del search_path sobre el que el rol tenga privilegio CREATE; si
---     "extensions" fuera primero, las 49 tablas de este script terminarían creándose
---     ahí en vez de en "gestion_fondos". El orden no afecta la resolución de
---     gen_random_uuid(): Postgres busca funciones existentes en TODOS los esquemas
---     del path, en cualquier orden.
---   - ALTER DATABASE ... SET search_path deja el search_path correcto para futuras
---     conexiones/sesiones (SQL Editor, PostgREST, Edge Functions), no solo para esta.
+-- Script DDL PostgreSQL (>= 13) — Versión 2 (Optimizado para Supabase Académico)
 -- =====================================================================================
 
--- 0. LIMPIEZA Y CONFIGURACIÓN INICIAL (Supabase)
+-- 1. LIMPIEZA ABSOLUTA DE INTENTOS ANTERIORES
+-- Borra el esquema anterior y todo su contenido (tablas, tipos, triggers) de forma en cascada
 DROP SCHEMA IF EXISTS gestion_fondos CASCADE;
 
-CREATE EXTENSION IF NOT EXISTS pgcrypto;               -- gen_random_uuid()
+-- 2. CONFIGURACIÓN DE EXTENSIONES Y RUTA DE BÚSQUEDA
+CREATE EXTENSION IF NOT EXISTS pgcrypto;               -- Habilita gen_random_uuid()
 
 CREATE SCHEMA IF NOT EXISTS gestion_fondos;
-SET search_path TO gestion_fondos, extensions, public;
+-- Se añade 'extensions' explícitamente para evitar fallos de resolución de funciones en Supabase
+SET search_path TO extensions, gestion_fondos, public;
 
--- Persiste el search_path para nuevas conexiones a la base (SQL Editor, API, etc.)
-ALTER DATABASE postgres SET search_path TO gestion_fondos, extensions, public;
+-- Alteración permanente para futuras conexiones de la sesión en la base de datos de Supabase
+ALTER DATABASE postgres SET search_path TO extensions, gestion_fondos, public;
 
 -- =====================================================================================
--- 1. TIPOS ENUMERADOS (estados de ciclo de vida)
+-- 3. TIPOS ENUMERADOS (estados de ciclo de vida)
 -- =====================================================================================
 
 CREATE TYPE gestion_fondos.estado_convocatoria        AS ENUM ('ABIERTA','CERRADA','ANULADA');
 
 CREATE TYPE gestion_fondos.estado_proyecto            AS ENUM (
-    'EN_EDICION',                     -- postulación creada, aún no enviada (nomenclatura institucional: "EN EDICIÓN")
-    'POSTULADO',                      -- enviada, a la espera de iniciar aprobaciones
-    'EN_REVISION_DEPARTAMENTAL',      -- nomenclatura institucional: "EN REVISION DEPARTAMENTAL"
+    'EN_EDICION',
+    'POSTULADO',
+    'EN_REVISION_DEPARTAMENTAL',
     'EN_REVISION_UGI',
-    'APROBADO',                       -- listo para registrar ejecución
+    'APROBADO',
     'EN_EJECUCION',
     'EN_CIERRE',
-    'BLOQUEADO',                      -- incumplimiento de fechas: requiere prórroga avalada
+    'BLOQUEADO',
     'CERRADO',
     'RECHAZADO'
 );
@@ -99,12 +54,12 @@ CREATE TYPE gestion_fondos.nivel_riesgo               AS ENUM ('ALTO','MEDIO','B
 CREATE TYPE gestion_fondos.categoria_impacto          AS ENUM ('SOCIAL','CIENTIFICO','ECONOMICO','POLITICO','AMBIENTAL','SOSTENIBILIDAD_GENERO');
 
 -- =====================================================================================
--- 2. TABLAS CATÁLOGO (paramétricas)
+-- 4. TABLAS CATÁLOGO (paramétricas)
 -- =====================================================================================
 
 CREATE TABLE cat_roles (
     id              SERIAL PRIMARY KEY,
-    nombre          VARCHAR(50)  NOT NULL UNIQUE,   -- INVESTIGADOR, DIRECTOR_DEPARTAMENTO, UGI, ADMINISTRADOR
+    nombre          VARCHAR(50)  NOT NULL UNIQUE,
     descripcion     TEXT
 );
 
@@ -119,13 +74,13 @@ CREATE TABLE cat_departamentos (
     nombre          VARCHAR(150) NOT NULL UNIQUE,
     tipo            VARCHAR(20)  NOT NULL CHECK (tipo IN ('DEPARTAMENTO','CENTRO')),
     facultad        VARCHAR(150),
-    director_usuario_id UUID,                       -- FK agregada tras crear "usuarios" (referencia cruzada)
+    director_usuario_id UUID,
     activo          BOOLEAN NOT NULL DEFAULT TRUE
 );
 
 CREATE TABLE cat_entidades_financiadoras (
     id              SERIAL PRIMARY KEY,
-    nombre          VARCHAR(200) NOT NULL UNIQUE,     -- CEDIA, Horizon Europe, BBSRC, ...
+    nombre          VARCHAR(200) NOT NULL UNIQUE,
     pais_id         INTEGER REFERENCES cat_paises(id),
     tipo            VARCHAR(20)  NOT NULL CHECK (tipo IN ('NACIONAL','INTERNACIONAL')),
     sitio_web       VARCHAR(300),
@@ -143,7 +98,7 @@ CREATE TABLE cat_tipos_requisito_documental (
 
 CREATE TABLE cat_tipos_alerta (
     id              SERIAL PRIMARY KEY,
-    codigo          VARCHAR(60)  NOT NULL UNIQUE,     -- VENCIMIENTO_REGISTRO_60D, etc.
+    codigo          VARCHAR(60)  NOT NULL UNIQUE,
     nombre          VARCHAR(150) NOT NULL,
     descripcion     TEXT,
     dias_anticipacion INTEGER NOT NULL DEFAULT 0
@@ -160,7 +115,7 @@ CREATE TABLE cat_instituciones_socias (
 
 CREATE TABLE cat_periodos_academicos (
     id              SERIAL PRIMARY KEY,
-    nombre          VARCHAR(50) NOT NULL,             -- p.ej. '2026-I'
+    nombre          VARCHAR(50) NOT NULL,
     anio            SMALLINT NOT NULL,
     periodo         SMALLINT NOT NULL CHECK (periodo IN (1,2)),
     fecha_inicio    DATE NOT NULL,
@@ -169,13 +124,12 @@ CREATE TABLE cat_periodos_academicos (
     UNIQUE (anio, periodo)
 );
 
--- Roles del equipo de investigación (Director, Codirector, Investigador Asociado, ...).
 CREATE TABLE cat_roles_proyecto (
     id              SERIAL PRIMARY KEY,
     codigo          VARCHAR(40)  NOT NULL UNIQUE,
     nombre          VARCHAR(100) NOT NULL,
     descripcion     TEXT,
-    permite_externo BOOLEAN NOT NULL DEFAULT FALSE,   -- metadato informativo para la UI; ver nota en sección "proyecto_equipo"
+    permite_externo BOOLEAN NOT NULL DEFAULT FALSE,
     orden           SMALLINT
 );
 
@@ -198,8 +152,8 @@ CREATE TABLE cat_lineas_investigacion (
 
 CREATE TABLE cat_grupos_investigacion (
     id              SERIAL PRIMARY KEY,
-    codigo          VARCHAR(20)  NOT NULL UNIQUE,          -- p.ej. 'GEA'
-    nombre          VARCHAR(200) NOT NULL,                 -- p.ej. 'Economía y Administración'
+    codigo          VARCHAR(20)  NOT NULL UNIQUE,
+    nombre          VARCHAR(200) NOT NULL,
     departamento_id INTEGER REFERENCES cat_departamentos(id)
 );
 
@@ -210,12 +164,12 @@ CREATE TABLE cat_tipos_investigacion (
 
 CREATE TABLE cat_disciplinas_cientificas (
     id      SERIAL PRIMARY KEY,
-    nombre  VARCHAR(150) NOT NULL UNIQUE                   -- clasificación OCDE/Frascati
+    nombre  VARCHAR(150) NOT NULL UNIQUE
 );
 
 CREATE TABLE cat_objetivos_socioeconomicos (
     id      SERIAL PRIMARY KEY,
-    nombre  VARCHAR(200) NOT NULL UNIQUE                   -- clasificación NABS
+    nombre  VARCHAR(200) NOT NULL UNIQUE
 );
 
 CREATE TABLE cat_areas_conocimiento_espe (
@@ -236,8 +190,6 @@ CREATE TABLE cat_subareas_unesco (
     nombre          VARCHAR(200) NOT NULL
 );
 
--- Jerarquía de campos (Campo Amplio -> Específico -> Detallado), clasificación tipo
--- CINE/SENESCYT usada en el formato institucional.
 CREATE TABLE cat_campos_amplios (
     id      SERIAL PRIMARY KEY,
     codigo  VARCHAR(10)  NOT NULL UNIQUE,
@@ -258,7 +210,6 @@ CREATE TABLE cat_campos_detallados (
     nombre                VARCHAR(200) NOT NULL
 );
 
--- Objetivos de Desarrollo Sostenible (ODS) y sus metas.
 CREATE TABLE cat_ods (
     id      SERIAL PRIMARY KEY,
     numero  SMALLINT NOT NULL UNIQUE CHECK (numero BETWEEN 1 AND 17),
@@ -268,7 +219,7 @@ CREATE TABLE cat_ods (
 CREATE TABLE cat_ods_metas (
     id           SERIAL PRIMARY KEY,
     ods_id       INTEGER NOT NULL REFERENCES cat_ods(id),
-    codigo       VARCHAR(10) NOT NULL,                     -- p.ej. '4.3'
+    codigo       VARCHAR(10) NOT NULL,
     descripcion  TEXT NOT NULL,
     UNIQUE (ods_id, codigo)
 );
@@ -280,7 +231,7 @@ CREATE INDEX idx_camposdet_especifico  ON cat_campos_detallados(campo_especifico
 CREATE INDEX idx_ods_metas_ods         ON cat_ods_metas(ods_id);
 
 -- =====================================================================================
--- 3. USUARIOS Y ROLES
+-- 5. USUARIOS Y ROLES
 -- =====================================================================================
 
 CREATE TABLE usuarios (
@@ -309,7 +260,7 @@ CREATE TABLE usuario_roles (
 );
 
 -- =====================================================================================
--- 4. BANCO DE OPORTUNIDADES (CONVOCATORIAS)
+-- 6. BANCO DE OPORTUNIDADES (CONVOCATORIAS)
 -- =====================================================================================
 
 CREATE TABLE convocatorias (
@@ -332,7 +283,7 @@ CREATE INDEX idx_convocatorias_entidad ON convocatorias(entidad_financiadora_id)
 CREATE INDEX idx_convocatorias_estado  ON convocatorias(estado);
 
 -- =====================================================================================
--- 5. POSTULACIÓN Y REGISTRO DEL PROYECTO (tabla central + metadatos académicos V2)
+-- 7. POSTULACIÓN Y REGISTRO DEL PROYECTO (tabla central + metadatos académicos V2)
 -- =====================================================================================
 
 CREATE TABLE proyectos (
@@ -345,22 +296,20 @@ CREATE TABLE proyectos (
     investigador_principal_id           UUID NOT NULL REFERENCES usuarios(id),
     departamento_id                     INTEGER NOT NULL REFERENCES cat_departamentos(id),
 
-    -- Metadatos académicos y científicos (formato oficial de formulación ESPE)
-    programa_postgrado_id               INTEGER REFERENCES cat_programas_postgrado(id),        -- opcional
+    programa_postgrado_id               INTEGER REFERENCES cat_programas_postgrado(id),
     linea_investigacion_id              INTEGER NOT NULL REFERENCES cat_lineas_investigacion(id),
     grupo_investigacion_id              INTEGER NOT NULL REFERENCES cat_grupos_investigacion(id),
     tipo_investigacion_id               INTEGER NOT NULL REFERENCES cat_tipos_investigacion(id),
     disciplina_cientifica_id            INTEGER NOT NULL REFERENCES cat_disciplinas_cientificas(id),
     objetivo_socioeconomico_id          INTEGER NOT NULL REFERENCES cat_objetivos_socioeconomicos(id),
     area_conocimiento_espe_id           INTEGER NOT NULL REFERENCES cat_areas_conocimiento_espe(id),
-    subarea_unesco_id                   INTEGER NOT NULL REFERENCES cat_subareas_unesco(id),   -- área UNESCO derivable vía subarea_unesco.area_unesco_id
-    campo_detallado_id                  INTEGER NOT NULL REFERENCES cat_campos_detallados(id), -- campo específico/amplio derivables vía la cadena de FKs
+    subarea_unesco_id                   INTEGER NOT NULL REFERENCES cat_subareas_unesco(id),
+    campo_detallado_id                  INTEGER NOT NULL REFERENCES cat_campos_detallados(id),
 
     fecha_adjudicacion_externa          DATE NOT NULL,
-    fecha_limite_registro               DATE,        -- calculada: +60 días laborables (trigger)
+    fecha_limite_registro               DATE,
     fecha_registro                      DATE,
 
-    -- Desglose presupuestario (4 rubros); el total se calcula automáticamente
     presupuesto_inversion_espe          NUMERIC(14,2) NOT NULL DEFAULT 0 CHECK (presupuesto_inversion_espe >= 0),
     presupuesto_corriente_espe          NUMERIC(14,2) NOT NULL DEFAULT 0 CHECK (presupuesto_corriente_espe >= 0),
     presupuesto_inversion_auspiciante   NUMERIC(14,2) NOT NULL DEFAULT 0 CHECK (presupuesto_inversion_auspiciante >= 0),
@@ -389,7 +338,6 @@ CREATE INDEX idx_proyectos_linea_investigacion  ON proyectos(linea_investigacion
 CREATE INDEX idx_proyectos_grupo_investigacion  ON proyectos(grupo_investigacion_id);
 CREATE INDEX idx_proyectos_campo_detallado      ON proyectos(campo_detallado_id);
 
--- Flujo de aprobación: Departamento -> UGI
 CREATE TABLE proyecto_aprobaciones (
     id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     proyecto_id     UUID NOT NULL REFERENCES proyectos(id) ON DELETE CASCADE,
@@ -404,7 +352,6 @@ CREATE TABLE proyecto_aprobaciones (
 
 CREATE INDEX idx_aprobaciones_proyecto ON proyecto_aprobaciones(proyecto_id);
 
--- Checklist de los 6 requisitos documentales
 CREATE TABLE proyecto_requisitos_documentales (
     id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     proyecto_id         UUID NOT NULL REFERENCES proyectos(id) ON DELETE CASCADE,
@@ -420,18 +367,15 @@ CREATE TABLE proyecto_requisitos_documentales (
 CREATE INDEX idx_requisitos_proyecto ON proyecto_requisitos_documentales(proyecto_id);
 
 -- =====================================================================================
--- 6. EQUIPO DEL PROYECTO (V2: roles ampliados + miembros externos) Y HORAS LIBERADAS
+-- 8. EQUIPO DEL PROYECTO
 -- =====================================================================================
 
--- Admite miembros internos (usuario_id, ESPE) y externos (identificación + institución
--- de origen, reutilizando cat_instituciones_socias), sin obligar a estos últimos a
--- tener un departamento interno de la ESPE.
 CREATE TABLE proyecto_equipo (
     id                      UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     proyecto_id             UUID NOT NULL REFERENCES proyectos(id) ON DELETE CASCADE,
     rol_proyecto_id         INTEGER NOT NULL REFERENCES cat_roles_proyecto(id),
-    usuario_id              UUID REFERENCES usuarios(id),                 -- miembro interno; NULL si es externo
-    externo_identificacion  VARCHAR(20),                                  -- cédula/identificación del externo
+    usuario_id              UUID REFERENCES usuarios(id),
+    externo_identificacion  VARCHAR(20),
     externo_nombres         VARCHAR(150),
     externo_apellidos       VARCHAR(150),
     externo_institucion_id  INTEGER REFERENCES cat_instituciones_socias(id),
@@ -450,11 +394,8 @@ CREATE TABLE proyecto_equipo (
 CREATE INDEX idx_equipo_usuario                ON proyecto_equipo(usuario_id);
 CREATE INDEX idx_equipo_rol                    ON proyecto_equipo(rol_proyecto_id);
 CREATE INDEX idx_equipo_externo_institucion    ON proyecto_equipo(externo_institucion_id);
--- Índices únicos parciales (usuario_id puede ser NULL en filas de miembros externos)
-CREATE UNIQUE INDEX uq_equipo_proyecto_usuario ON proyecto_equipo(proyecto_id, usuario_id)
-    WHERE usuario_id IS NOT NULL;
-CREATE UNIQUE INDEX uq_equipo_proyecto_externo ON proyecto_equipo(proyecto_id, externo_identificacion)
-    WHERE externo_identificacion IS NOT NULL;
+CREATE UNIQUE INDEX uq_equipo_proyecto_usuario ON proyecto_equipo(proyecto_id, usuario_id) WHERE usuario_id IS NOT NULL;
+CREATE UNIQUE INDEX uq_equipo_proyecto_externo ON proyecto_equipo(proyecto_id, externo_identificacion) WHERE externo_identificacion IS NOT NULL;
 
 CREATE TABLE liberacion_horas (
     id                      UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -474,31 +415,28 @@ CREATE INDEX idx_liberacion_usuario ON liberacion_horas(usuario_id);
 CREATE INDEX idx_liberacion_periodo ON liberacion_horas(periodo_academico_id);
 
 -- =====================================================================================
--- 7. FORMULACIÓN DEL PROYECTO (V2): objetivos, riesgos, impactos, ODS y texto largo
+-- 9. FORMULACIÓN DEL PROYECTO
 -- =====================================================================================
 
--- Objetivo general y objetivos específicos, con indicador y meta. Los "hitos" (sección 8)
--- pueden vincularse a un objetivo específico.
 CREATE TABLE proyecto_objetivos (
     id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     proyecto_id         UUID NOT NULL REFERENCES proyectos(id) ON DELETE CASCADE,
-    tipo_objetivo       tipo_objetivo_proyecto NOT NULL,
-    objetivo_general_id UUID REFERENCES proyecto_objetivos(id) ON DELETE CASCADE,   -- autorreferencia
+    tipo_objective      tipo_objetivo_proyecto NOT NULL,
+    objetivo_general_id UUID REFERENCES proyecto_objetivos(id) ON DELETE CASCADE,
     descripcion         TEXT NOT NULL,
     indicador           TEXT,
     meta                TEXT,
     orden               SMALLINT,
     CHECK (
-        (tipo_objetivo = 'GENERAL'    AND objetivo_general_id IS NULL)
+        (tipo_objective = 'GENERAL'    AND objetivo_general_id IS NULL)
         OR
-        (tipo_objetivo = 'ESPECIFICO' AND objetivo_general_id IS NOT NULL)
+        (tipo_objective = 'ESPECIFICO' AND objetivo_general_id IS NOT NULL)
     )
 );
 
 CREATE INDEX idx_objetivos_proyecto ON proyecto_objetivos(proyecto_id);
 CREATE INDEX idx_objetivos_general  ON proyecto_objetivos(objetivo_general_id);
 
--- Matriz de riesgos del proyecto.
 CREATE TABLE proyecto_riesgos (
     id                      UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     proyecto_id             UUID NOT NULL REFERENCES proyectos(id) ON DELETE CASCADE,
@@ -512,7 +450,6 @@ CREATE TABLE proyecto_riesgos (
 
 CREATE INDEX idx_riesgos_proyecto ON proyecto_riesgos(proyecto_id);
 
--- Análisis de impactos esperados del proyecto.
 CREATE TABLE proyecto_impactos (
     id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     proyecto_id  UUID NOT NULL REFERENCES proyectos(id) ON DELETE CASCADE,
@@ -523,16 +460,12 @@ CREATE TABLE proyecto_impactos (
 
 CREATE INDEX idx_impactos_proyecto ON proyecto_impactos(proyecto_id);
 
--- Alineación N:M del proyecto con metas ODS. El ODS padre de cada alineación es
--- derivable vía cat_ods_metas.ods_id.
 CREATE TABLE proyecto_ods_metas (
     proyecto_id  UUID NOT NULL REFERENCES proyectos(id) ON DELETE CASCADE,
     ods_meta_id  INTEGER NOT NULL REFERENCES cat_ods_metas(id),
     PRIMARY KEY (proyecto_id, ods_meta_id)
 );
 
--- Texto largo de formulación, en relación 1:1 con "proyectos" (comparte la misma PK);
--- se separó de "proyectos" para no sobrecargar la tabla central con texto extenso.
 CREATE TABLE proyecto_formulacion (
     proyecto_id                        UUID PRIMARY KEY REFERENCES proyectos(id) ON DELETE CASCADE,
     diagnostico_problema               TEXT,
@@ -544,13 +477,13 @@ CREATE TABLE proyecto_formulacion (
 );
 
 -- =====================================================================================
--- 8. HITOS Y TAREAS (SEGUIMIENTO TIPO GANTT)
+-- 10. HITOS Y TAREAS (SEGUIMIENTO TIPO GANTT)
 -- =====================================================================================
 
 CREATE TABLE hitos (
     id                      UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     proyecto_id             UUID NOT NULL REFERENCES proyectos(id) ON DELETE CASCADE,
-    objetivo_especifico_id  UUID REFERENCES proyecto_objetivos(id),      -- objetivo específico que el hito ayuda a cumplir (opcional)
+    objetivo_especifico_id  UUID REFERENCES proyecto_objetivos(id),
     nombre                  VARCHAR(250) NOT NULL,
     descripcion             TEXT,
     orden                   SMALLINT,
@@ -588,11 +521,9 @@ CREATE INDEX idx_tareas_hito         ON tareas(hito_id);
 CREATE INDEX idx_tareas_responsable  ON tareas(responsable_id);
 
 -- =====================================================================================
--- 9. INFORMES DE SEGUIMIENTO - CALENDARIO DUAL (EXTERNO / INTERNO)
+-- 11. INFORMES DE SEGUIMIENTO - CALENDARIO DUAL
 -- =====================================================================================
 
--- Catálogo/definición de cortes de reporte. EXTERNO se ancla a la entidad financiadora
--- (p.ej. cortes junio/diciembre); INTERNO se ancla al periodo académico de la universidad.
 CREATE TABLE periodos_reporte (
     id                      UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     tipo                    tipo_calendario_informe NOT NULL,
@@ -600,7 +531,7 @@ CREATE TABLE periodos_reporte (
     periodo_academico_id    INTEGER REFERENCES cat_periodos_academicos(id),
     anio                    SMALLINT NOT NULL,
     fecha_corte             DATE NOT NULL,
-    etiqueta                VARCHAR(100) NOT NULL,       -- p.ej. 'Corte Junio 2026' / 'Semestre 2026-I'
+    etiqueta                VARCHAR(100) NOT NULL,
     CHECK (
         (tipo = 'EXTERNO' AND entidad_financiadora_id IS NOT NULL AND periodo_academico_id IS NULL)
         OR
@@ -620,7 +551,7 @@ CREATE TABLE informes_seguimiento (
     archivo_url                 VARCHAR(400),
     avance_tecnico_pct          SMALLINT CHECK (avance_tecnico_pct BETWEEN 0 AND 100),
     avance_financiero_pct       SMALLINT CHECK (avance_financiero_pct BETWEEN 0 AND 100),
-    horas_liberadas_justificadas NUMERIC(6,2),           -- solo aplica a informes de calendario INTERNO
+    horas_liberadas_justificadas NUMERIC(6,2),
     estado                       estado_informe NOT NULL DEFAULT 'PENDIENTE',
     observaciones                TEXT,
     presentado_por                UUID REFERENCES usuarios(id),
@@ -632,7 +563,7 @@ CREATE INDEX idx_informes_proyecto ON informes_seguimiento(proyecto_id);
 CREATE INDEX idx_informes_estado   ON informes_seguimiento(estado);
 
 -- =====================================================================================
--- 10. PRÓRROGAS Y CIERRE DE PROYECTO
+-- 12. PRÓRROGAS Y CIERRE DE PROYECTO
 -- =====================================================================================
 
 CREATE TABLE prorrogas (
@@ -642,7 +573,7 @@ CREATE TABLE prorrogas (
     fecha_vencimiento_original   DATE NOT NULL,
     fecha_nueva_vencimiento      DATE NOT NULL,
     motivo                       TEXT NOT NULL,
-    documento_aval_externo_url   VARCHAR(400) NOT NULL,  -- obligatorio: aval de la entidad financiadora
+    documento_aval_externo_url   VARCHAR(400) NOT NULL,
     estado                       estado_prorroga NOT NULL DEFAULT 'SOLICITADA',
     fecha_aval_externo           DATE,
     solicitado_por               UUID REFERENCES usuarios(id),
@@ -666,7 +597,7 @@ CREATE TABLE cierres_proyecto (
 CREATE INDEX idx_cierres_proyecto ON cierres_proyecto(proyecto_id);
 
 -- =====================================================================================
--- 11. IMPACTO Y RESULTADOS
+-- 13. IMPACTO Y RESULTADOS
 -- =====================================================================================
 
 CREATE TABLE publicaciones (
@@ -677,7 +608,7 @@ CREATE TABLE publicaciones (
     revista_evento  VARCHAR(250),
     doi             VARCHAR(150),
     fecha_publicacion DATE,
-    indexacion      VARCHAR(100),                        -- Scopus, WoS, Latindex, ...
+    indexacion      VARCHAR(100),
     url             VARCHAR(400),
     created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
 );
@@ -687,8 +618,8 @@ CREATE INDEX idx_publicaciones_proyecto ON publicaciones(proyecto_id);
 CREATE TABLE publicacion_autores (
     publicacion_id      UUID NOT NULL REFERENCES publicaciones(id) ON DELETE CASCADE,
     orden_autor         SMALLINT NOT NULL,
-    usuario_id          UUID REFERENCES usuarios(id),     -- autor interno (si aplica)
-    nombre_autor_externo VARCHAR(200),                    -- autor externo (si no es de la ESPE)
+    usuario_id          UUID REFERENCES usuarios(id),
+    nombre_autor_externo VARCHAR(200),
     PRIMARY KEY (publicacion_id, orden_autor),
     CHECK (usuario_id IS NOT NULL OR nombre_autor_externo IS NOT NULL)
 );
@@ -712,7 +643,7 @@ CREATE TABLE indice_h_historico (
     usuario_id      UUID NOT NULL REFERENCES usuarios(id) ON DELETE CASCADE,
     valor           SMALLINT NOT NULL CHECK (valor >= 0),
     fecha_medicion  DATE NOT NULL DEFAULT CURRENT_DATE,
-    fuente          VARCHAR(50) NOT NULL,                 -- Scopus, Google Scholar, WoS, ...
+    fuente          VARCHAR(50) NOT NULL,
     UNIQUE (usuario_id, fecha_medicion, fuente)
 );
 
@@ -721,13 +652,13 @@ CREATE INDEX idx_indice_h_usuario ON indice_h_historico(usuario_id);
 CREATE TABLE proyecto_instituciones_socias (
     proyecto_id             UUID NOT NULL REFERENCES proyectos(id) ON DELETE CASCADE,
     institucion_socia_id    INTEGER NOT NULL REFERENCES cat_instituciones_socias(id),
-    tipo_cooperacion        VARCHAR(100),                 -- Movilidad, Copublicación, Cofinanciamiento, ...
+    tipo_cooperacion        VARCHAR(100),
     fecha_vinculacion       DATE NOT NULL DEFAULT CURRENT_DATE,
     PRIMARY KEY (proyecto_id, institucion_socia_id)
 );
 
 -- =====================================================================================
--- 12. ALERTAS Y NOTIFICACIONES
+-- 14. ALERTAS Y NOTIFICACIONES
 -- =====================================================================================
 
 CREATE TABLE eventos_notificacion (
@@ -740,9 +671,9 @@ CREATE TABLE eventos_notificacion (
     canal                   canal_notificacion NOT NULL DEFAULT 'SISTEMA',
     estado                  estado_notificacion NOT NULL DEFAULT 'PENDIENTE',
     mensaje                 TEXT NOT NULL,
-    tabla_referencia        VARCHAR(50),                  -- tabla origen del evento (informes_seguimiento, prorrogas, ...)
-    registro_referencia_id  UUID,                          -- PK del registro origen en esa tabla
-    metadata                JSONB,                         -- payload adicional flexible (canal push, params de plantilla, etc.)
+    tabla_referencia        VARCHAR(50),
+    registro_referencia_id  UUID,
+    metadata                JSONB,
     created_at              TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
@@ -751,10 +682,9 @@ CREATE INDEX idx_notificaciones_destino    ON eventos_notificacion(usuario_desti
 CREATE INDEX idx_notificaciones_proyecto   ON eventos_notificacion(proyecto_id);
 
 -- =====================================================================================
--- 13. FUNCIONES Y TRIGGERS DE NEGOCIO
+-- 15. FUNCIONES Y TRIGGERS DE NEGOCIO
 -- =====================================================================================
 
--- 13.1 Mantenimiento genérico de updated_at
 CREATE OR REPLACE FUNCTION fn_set_updated_at() RETURNS TRIGGER AS $$
 BEGIN
     NEW.updated_at = now();
@@ -768,7 +698,6 @@ CREATE TRIGGER trg_proyectos_updated_at      BEFORE UPDATE ON proyectos         
 CREATE TRIGGER trg_hitos_updated_at          BEFORE UPDATE ON hitos                FOR EACH ROW EXECUTE FUNCTION fn_set_updated_at();
 CREATE TRIGGER trg_formulacion_updated_at    BEFORE UPDATE ON proyecto_formulacion FOR EACH ROW EXECUTE FUNCTION fn_set_updated_at();
 
--- 13.2 Cálculo de días laborables (lunes-viernes, sin feriados) para el plazo de 60 días
 CREATE OR REPLACE FUNCTION fn_sumar_dias_habiles(p_fecha_inicio DATE, p_dias INTEGER)
 RETURNS DATE AS $$
 DECLARE
@@ -777,7 +706,7 @@ DECLARE
 BEGIN
     WHILE v_contador < p_dias LOOP
         v_fecha := v_fecha + INTERVAL '1 day';
-        IF EXTRACT(ISODOW FROM v_fecha) < 6 THEN   -- 1..5 = lunes..viernes
+        IF EXTRACT(ISODOW FROM v_fecha) < 6 THEN
             v_contador := v_contador + 1;
         END IF;
     END LOOP;
@@ -785,8 +714,6 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql IMMUTABLE;
 
--- 13.3 Al insertar un proyecto: fija automáticamente el plazo máximo de registro (60 días
---      laborables desde la adjudicación externa) y programa la alerta de vencimiento.
 CREATE OR REPLACE FUNCTION fn_proyecto_before_insert() RETURNS TRIGGER AS $$
 BEGIN
     IF NEW.fecha_limite_registro IS NULL THEN
@@ -826,9 +753,6 @@ CREATE TRIGGER trg_proyecto_after_insert
     AFTER INSERT ON proyectos
     FOR EACH ROW EXECUTE FUNCTION fn_proyecto_after_insert();
 
--- 13.4 Bloqueo operativo: si el proyecto está en estado BLOQUEADO, no se pueden registrar
---      avances (hitos) ni nuevos informes hasta que exista una prórroga avalada por la
---      entidad externa (proceso que debe transicionar el proyecto fuera de BLOQUEADO).
 CREATE OR REPLACE FUNCTION fn_validar_proyecto_no_bloqueado() RETURNS TRIGGER AS $$
 DECLARE
     v_estado estado_proyecto;
@@ -849,21 +773,16 @@ CREATE TRIGGER trg_bloqueo_informes
     BEFORE INSERT ON informes_seguimiento
     FOR EACH ROW EXECUTE FUNCTION fn_validar_proyecto_no_bloqueado();
 
--- 13.5 Consistencia entre proyecto_objetivos (objetivo específico -> debe referenciar un
---      GENERAL del mismo proyecto), hitos (objetivo_especifico_id -> debe ser ESPECIFICO
---      y del mismo proyecto) y proyecto_riesgos (objetivo_afectado_id -> mismo proyecto).
--- Validaciones que un CHECK o FK simples no pueden expresar por sí solos.
-
 CREATE OR REPLACE FUNCTION fn_validar_objetivo_general() RETURNS TRIGGER AS $$
 DECLARE
     v_existe BOOLEAN;
 BEGIN
-    IF NEW.tipo_objetivo = 'ESPECIFICO' THEN
+    IF NEW.tipo_objective = 'ESPECIFICO' THEN
         SELECT EXISTS (
             SELECT 1 FROM proyecto_objetivos
             WHERE id = NEW.objetivo_general_id
               AND proyecto_id = NEW.proyecto_id
-              AND tipo_objetivo = 'GENERAL'
+              AND tipo_objective = 'GENERAL'
         ) INTO v_existe;
         IF NOT v_existe THEN
             RAISE EXCEPTION 'objetivo_general_id % debe referenciar un objetivo GENERAL del mismo proyecto %',
@@ -887,7 +806,7 @@ BEGIN
             SELECT 1 FROM proyecto_objetivos
             WHERE id = NEW.objetivo_especifico_id
               AND proyecto_id = NEW.proyecto_id
-              AND tipo_objetivo = 'ESPECIFICO'
+              AND tipo_objective = 'ESPECIFICO'
         ) INTO v_existe;
         IF NOT v_existe THEN
             RAISE EXCEPTION 'El objetivo especifico % no pertenece al proyecto % o no es de tipo ESPECIFICO',
@@ -925,7 +844,7 @@ CREATE TRIGGER trg_riesgos_valida_objetivo
     FOR EACH ROW EXECUTE FUNCTION fn_validar_objetivo_riesgo();
 
 -- =====================================================================================
--- 14. DATOS SEMILLA (catálogos base del prototipo)
+-- 16. DATOS SEMILLA (catálogos base del prototipo)
 -- =====================================================================================
 
 INSERT INTO cat_roles (nombre, descripcion) VALUES
@@ -961,10 +880,6 @@ INSERT INTO cat_roles_proyecto (codigo, nombre, permite_externo, orden) VALUES
     ('APOYO',                    'Personal de apoyo',                     FALSE, 5),
     ('ASISTENTE_INVESTIGACION',  'Asistente de investigación',            FALSE, 6),
     ('AYUDANTE_INVESTIGACION',   'Ayudante de investigación',             FALSE, 7);
-
--- --- Catálogos de clasificación académica/científica (datos representativos; en
---     producción se cargarían las tablas oficiales completas de SENESCYT/UNESCO/OCDE
---     mediante un proceso de carga masiva) -------------------------------------------
 
 INSERT INTO cat_dominios_academicos (nombre) VALUES
     ('Ciencias Exactas y Naturales'),
@@ -1063,4 +978,4 @@ SELECT id, x.codigo, x.descripcion FROM cat_ods, LATERAL (VALUES
 ) AS x(ods_numero, codigo, descripcion)
 WHERE cat_ods.numero = x.ods_numero;
 
--- Fin del script.
+-- Fin del script completo.
