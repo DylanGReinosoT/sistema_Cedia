@@ -1,14 +1,17 @@
 # Diccionario de Datos — Sistema de Gestión de Fondos Externos y Cooperación Internacional (ESPE)
 
-**Versión V2.** Corresponde a la ejecución conjunta de:
-1. [`database/01_schema_gestion_fondos_externos.sql`](../database/01_schema_gestion_fondos_externos.sql) — esquema base (V1).
-2. [`database/02_migracion_v1_a_v2.sql`](../database/02_migracion_v1_a_v2.sql) — migración evolutiva (V2), que amplía el equipo de
-   investigación, agrega los metadatos académicos/científicos y el desglose presupuestario exigidos por el formato oficial de
-   formulación de proyectos de la ESPE, incorpora la matriz de riesgos, el análisis de impactos y los objetivos general/específicos,
-   y alinea la nomenclatura de estados del proyecto.
+**Versión V2.** Corresponde al script único y consolidado
+[`database/01_schema_gestion_fondos_externos.sql`](../database/01_schema_gestion_fondos_externos.sql) — se ejecuta de una sola vez
+contra una base de datos vacía y crea el esquema completo (no requiere ningún script adicional de migración).
 
-Todo el modelo vive en el esquema `gestion_fondos` de PostgreSQL (>= 13). Las tablas y columnas introducidas o modificadas en V2
-están marcadas con la etiqueta **`V2`**; lo que no lleva etiqueta proviene de la V1 y no cambió.
+Esta versión, respecto del diseño original, amplía el equipo de investigación (roles institucionales + investigadores externos),
+agrega los metadatos académicos/científicos y el desglose presupuestario exigidos por el formato oficial de formulación de
+proyectos de la ESPE, incorpora la matriz de riesgos, el análisis de impactos y los objetivos general/específicos del proyecto, y
+alinea la nomenclatura de los estados del proyecto al reporte institucional.
+
+Todo el modelo vive en el esquema `gestion_fondos` de PostgreSQL (>= 13). Las tablas y columnas que corresponden a esta ampliación
+del diseño original están marcadas con la etiqueta **`V2`**, para que quede explícito qué se incorporó a partir del reporte Excel
+y el formato oficial (PDF) institucionales.
 
 ## Convenciones del modelo
 
@@ -19,8 +22,7 @@ están marcadas con la etiqueta **`V2`**; lo que no lleva etiqueta proviene de l
 | Estados de ciclo de vida | `ENUM` nativo de PostgreSQL — integridad garantizada por el motor sin tablas ni joins extra |
 | Auditoría básica | `created_at` / `updated_at` (`TIMESTAMPTZ`) en tablas transaccionales principales; `updated_at` se mantiene con trigger genérico |
 | Documentos adjuntos | Se almacena la URL/ruta del archivo (`VARCHAR`), no el binario — el almacenamiento físico se asume externo (bucket/file server) |
-| Roles de equipo de proyecto (`V2`) | Migrados de `ENUM` a tabla catálogo `cat_roles_proyecto` — la lista institucional es más larga y sigue creciendo |
-| Cambios de nomenclatura en ENUM (`V2`) | `ALTER TYPE ... RENAME VALUE` — conserva el OID interno (filas y `DEFAULT` existentes intactos), solo cambia la etiqueta |
+| Roles de equipo de proyecto (`V2`) | Tabla catálogo `cat_roles_proyecto` (no `ENUM`) — la lista institucional es larga (7 roles) y sigue creciendo |
 | Totales calculados (`V2`) | `presupuesto_total` es columna `GENERATED ALWAYS AS (...) STORED` — evita inconsistencias entre el desglose y el total |
 
 Leyenda de columna **Tipo**: `C` = tabla Catálogo (paramétrica), `T` = tabla Transaccional.
@@ -29,7 +31,7 @@ Leyenda de columna **Tipo**: `C` = tabla Catálogo (paramétrica), `T` = tabla T
 
 ## Índice de tablas
 
-### Heredadas de V1 (algunas modificadas en V2, ver marca)
+### Núcleo del diseño original (algunas ampliadas en V2, ver marca)
 
 | # | Tabla | Tipo | Propósito |
 |---|---|---|---|
@@ -246,12 +248,12 @@ Proyecto de investigación con financiamiento externo, desde su postulación has
 | `presupuesto_corriente_espe` `V2` | NUMERIC(14,2) NOT NULL DEFAULT 0 | — | `CHECK >= 0`; rubro corriente aportado por la ESPE |
 | `presupuesto_inversion_auspiciante` `V2` | NUMERIC(14,2) NOT NULL DEFAULT 0 | — | `CHECK >= 0`; rubro de inversión aportado por la entidad auspiciante (externa) |
 | `presupuesto_corriente_auspiciante` `V2` | NUMERIC(14,2) NOT NULL DEFAULT 0 | — | `CHECK >= 0`; rubro corriente aportado por la entidad auspiciante |
-| `presupuesto_total` | NUMERIC(14,2) **`GENERATED ALWAYS AS (...) STORED`** `V2` | — | Suma automática de los 4 rubros anteriores; en V1 era un campo editable manualmente, en V2 se recalcula por el motor para garantizar consistencia |
+| `presupuesto_total` | NUMERIC(14,2) **`GENERATED ALWAYS AS (...) STORED`** `V2` | — | Suma automática de los 4 rubros anteriores; el motor la recalcula siempre, por lo que no puede quedar desincronizada del desglose |
 | `fecha_inicio_ejecucion` / `fecha_fin_planificada` / `fecha_fin_real` | DATE | — | `CHECK (fecha_fin_planificada >= fecha_inicio_ejecucion)` cuando ambas existen |
-| `estado` | ENUM `estado_proyecto` | — | `EN_EDICION → POSTULADO → EN_REVISION_DEPARTAMENTAL → EN_REVISION_UGI → APROBADO → EN_EJECUCION → EN_CIERRE → CERRADO`, con bifurcaciones a `RECHAZADO` y `BLOQUEADO`. **`V2`**: `BORRADOR`, `EN_APROBACION_DEPARTAMENTO` y `EN_APROBACION_UGI` fueron renombrados (`ALTER TYPE ... RENAME VALUE`) a `EN_EDICION`, `EN_REVISION_DEPARTAMENTAL` y `EN_REVISION_UGI` para alinearse a la nomenclatura del reporte Excel institucional; el `DEFAULT` y las filas existentes no requieren migración porque el renombrado conserva el OID interno del valor |
+| `estado` `V2` | ENUM `estado_proyecto` | — | `EN_EDICION → POSTULADO → EN_REVISION_DEPARTAMENTAL → EN_REVISION_UGI → APROBADO → EN_EJECUCION → EN_CIERRE → CERRADO`, con bifurcaciones a `RECHAZADO` y `BLOQUEADO`. Nomenclatura alineada al reporte Excel institucional (equivalente conceptual a "BORRADOR"/"EN APROBACIÓN..." de un primer diseño interno) |
 | `created_at` / `updated_at` | TIMESTAMPTZ | — | Auditoría |
 
-**Reglas de negocio clave:** al insertarse, un trigger `BEFORE INSERT` calcula `fecha_limite_registro`; un segundo trigger `AFTER INSERT` programa automáticamente el evento de alerta de vencimiento (`eventos_notificacion`) 5 días antes de esa fecha. Las columnas de clasificación académica marcadas `NOT NULL` se respaldaron (`backfill`) en proyectos preexistentes con el primer valor de su catálogo respectivo al migrar; se recomienda que el equipo de investigación actualice la clasificación real desde la aplicación (ver `database/02_migracion_v1_a_v2.sql`, sección 2).
+**Reglas de negocio clave:** al insertarse, un trigger `BEFORE INSERT` calcula `fecha_limite_registro`; un segundo trigger `AFTER INSERT` programa automáticamente el evento de alerta de vencimiento (`eventos_notificacion`) 5 días antes de esa fecha. Las columnas de clasificación académica marcadas `NOT NULL` no tienen valor por defecto: la aplicación debe capturar la clasificación completa del proyecto (línea de investigación, grupo, tipo, disciplina, objetivo socioeconómico, área ESPE, sub-área UNESCO y campo detallado) en el momento del registro, tal como lo exige el formato oficial de formulación.
 
 **Metadatos académicos/científicos relacionados por fuera de esta tabla:** el texto largo de formulación vive en `proyecto_formulacion` (1:1), los objetivos en `proyecto_objetivos`, la matriz de riesgos en `proyecto_riesgos`, el análisis de impactos en `proyecto_impactos`, y la alineación a los ODS en `proyecto_ods_metas` — ver secciones 45-49.
 
@@ -292,15 +294,15 @@ Equipo investigador asignado a cada proyecto. **`V2`**: admite miembros internos
 |---|---|---|---|
 | `id` | UUID PK | — | Identificador |
 | `proyecto_id` | UUID NOT NULL | FK → `proyectos.id` ON DELETE CASCADE | Proyecto |
-| `rol_proyecto_id` `V2` | INTEGER NOT NULL | FK → `cat_roles_proyecto.id` | Reemplaza al `ENUM rol_proyecto` de la V1 |
-| `usuario_id` | UUID **NULL** (relajado en `V2`) | FK → `usuarios.id` | Miembro interno (ESPE); `NULL` si el miembro es externo |
+| `rol_proyecto_id` `V2` | INTEGER NOT NULL | FK → `cat_roles_proyecto.id` | Rol del miembro dentro del equipo (catálogo, no `ENUM`) |
+| `usuario_id` | UUID NULL | FK → `usuarios.id` | Miembro interno (ESPE); `NULL` si el miembro es externo |
 | `externo_identificacion` `V2` | VARCHAR(20) | — | Cédula/identificación del investigador externo; `NULL` si es interno |
 | `externo_nombres` / `externo_apellidos` `V2` | VARCHAR(150) | — | Nombre del investigador externo; `NULL` si es interno |
 | `externo_institucion_id` `V2` | INTEGER | FK → `cat_instituciones_socias.id` | Institución de origen del externo (reutiliza el catálogo de cooperación internacional) |
 | `externo_correo` `V2` | VARCHAR(150) | — | Correo de contacto del externo (opcional) |
 | `fecha_incorporacion` / `fecha_salida` | DATE | — | Vigencia de la participación |
 | — | `CHECK` interno **XOR** externo `V2` | — | Exactamente uno de los dos conjuntos de columnas (`usuario_id`) o (`externo_identificacion`+`externo_nombres`+`externo_apellidos`) debe estar completo |
-| — | Índice único parcial `(proyecto_id, usuario_id) WHERE usuario_id IS NOT NULL` `V2` | — | Reemplaza la `UNIQUE(proyecto_id, usuario_id)` de la V1 (que no admitía múltiples filas con `usuario_id NULL`) |
+| — | Índice único parcial `(proyecto_id, usuario_id) WHERE usuario_id IS NOT NULL` `V2` | — | Un usuario interno no se duplica en el mismo proyecto (el índice es parcial porque `usuario_id` puede ser `NULL` en filas de miembros externos) |
 | — | Índice único parcial `(proyecto_id, externo_identificacion) WHERE externo_identificacion IS NOT NULL` `V2` | — | Evita duplicar al mismo externo en un proyecto |
 
 **Nota de diseño:** `cat_roles_proyecto.permite_externo` es un metadato informativo (para filtrar en la UI qué roles son típicamente
@@ -512,9 +514,9 @@ Cola de alertas/notificaciones automáticas del sistema (vencimiento de 60 días
 ## Tablas incorporadas en V2
 
 ## 29. `cat_roles_proyecto` — Tipo: **C** `V2`
-Catálogo de roles del equipo de investigación de un proyecto. Reemplaza al `ENUM rol_proyecto` de la V1: la lista institucional
-(Director, Codirector, Investigador Interno, Investigador Asociado, Apoyo, Asistente y Ayudante de Investigación) es más larga
-y puede seguir creciendo sin requerir una migración de esquema.
+Catálogo de roles del equipo de investigación de un proyecto. Se modela como tabla catálogo (no `ENUM`) porque la lista
+institucional (Director, Codirector, Investigador Interno, Investigador Asociado, Apoyo, Asistente y Ayudante de Investigación)
+es larga y puede seguir creciendo sin requerir cambios de esquema.
 
 | Columna | Tipo | Relación | Descripción / Regla de negocio |
 |---|---|---|---|
@@ -742,14 +744,13 @@ Análisis de impactos esperados del proyecto.
 - **Bloqueo por incumplimiento:** en vez de solo un valor de estado, se refuerza con triggers (`fn_validar_proyecto_no_bloqueado`) que impiden operaciones de avance (hitos, informes) mientras el proyecto esté `BLOQUEADO`, forzando el paso por el proceso de `prorrogas`.
 - **Extensibilidad de catálogos:** todas las tablas `cat_*` están diseñadas para crecer sin cambios de esquema (nuevas entidades financiadoras, países, tipos de requisito, tipos de alerta), característica clave para un sistema institucional de largo plazo.
 
-### Notas de la migración V2
+### Notas de la ampliación V2 (equipo, formulación académica, presupuesto)
 
-- **ENUM → catálogo (`rol_proyecto`):** en V1 los roles del equipo eran un `ENUM` de 3 valores; el formato oficial exige 7 roles
-  institucionales y es previsible que la lista siga cambiando, por lo que se migró a `cat_roles_proyecto`. La migración mapea
-  `INVESTIGADOR_PRINCIPAL → DIRECTOR`, `COINVESTIGADOR → INVESTIGADOR_INTERNO`, `COLABORADOR → APOYO` antes de eliminar el
-  `ENUM` original.
-- **Investigadores externos:** en vez de crear una tabla paralela a `usuarios`, se optó por relajar `proyecto_equipo.usuario_id`
-  a `NULL` y añadir columnas `externo_*` con un `CHECK` XOR — el mismo patrón ya usado en `publicacion_autores` para autores
+- **ENUM → catálogo (roles de proyecto):** los roles del equipo se modelan como tabla catálogo (`cat_roles_proyecto`) y no como
+  `ENUM`, porque el formato oficial exige 7 roles institucionales y es previsible que la lista siga cambiando; a diferencia de
+  los estados de ciclo de vida (que sí son `ENUM`, ver tabla de convenciones), esta lista no conviene fijarla en el esquema.
+- **Investigadores externos:** en vez de crear una tabla paralela a `usuarios`, `proyecto_equipo.usuario_id` es `NULL`-able y se
+  añaden columnas `externo_*` con un `CHECK` XOR — el mismo patrón ya usado en `publicacion_autores` para autores
   internos/externos de una publicación, manteniendo el modelo consistente.
 - **Jerarquías de clasificación (línea/dominio, UNESCO área/sub-área, campos amplio/específico/detallado):** se modelaron como
   catálogos encadenados por FK (hijo → padre) en vez de columnas planas repetidas en `proyectos`, para que el nivel superior sea
@@ -757,15 +758,13 @@ Análisis de impactos esperados del proyecto.
 - **ODS con metas (no solo el ODS):** el requerimiento pide que el proyecto se alinee a metas concretas; `proyecto_ods_metas`
   enlaza directamente a `cat_ods_metas`, y el ODS padre se obtiene por `JOIN` a través de `cat_ods_metas.ods_id` — evita
   duplicar la relación a dos niveles (ODS y meta) para el mismo proyecto.
-- **`presupuesto_total` como columna generada:** en V1 era un campo editable manualmente que podía desincronizarse de sus
-  componentes; en V2, al desglosarse en 4 rubros obligatorios por el formato oficial, se recalcula con
-  `GENERATED ALWAYS AS (...) STORED`, eliminando la posibilidad de inconsistencia por diseño.
-- **Backfill de columnas `NOT NULL` nuevas en `proyectos`:** las 8 columnas de clasificación académica se agregaron primero
-  como nullable, se respaldaron con el primer valor de su catálogo y luego se marcaron `NOT NULL` — patrón estándar para
-  evolucionar un esquema con filas preexistentes sin downtime ni pérdida de datos.
-- **Renombrado de estados sin migrar datos:** `ALTER TYPE estado_proyecto RENAME VALUE` cambia solo la etiqueta visible de un
-  valor `ENUM` ya existente (conserva su OID interno), por lo que no requiere `UPDATE` sobre `proyectos.estado` ni redefinir
-  el `DEFAULT` de la columna.
+- **`presupuesto_total` como columna generada:** al desglosarse el presupuesto en 4 rubros obligatorios por el formato oficial,
+  el total se recalcula con `GENERATED ALWAYS AS (...) STORED` en vez de capturarse manualmente, eliminando la posibilidad de
+  inconsistencia por diseño.
+- **Columnas de clasificación académica `NOT NULL` sin valor por defecto:** a diferencia de otros campos opcionales, las 8
+  columnas de clasificación de `proyectos` (línea de investigación, grupo, tipo, disciplina, objetivo socioeconómico, área ESPE,
+  sub-área UNESCO, campo detallado) son obligatorias desde el registro del proyecto porque el formato oficial las exige; solo
+  `programa_postgrado_id` queda opcional, tal como pide el requerimiento.
 - **Por qué no se fuerza rol↔origen (interno/externo) en `proyecto_equipo`:** se decidió no añadir un trigger que exija, por
   ejemplo, que solo `INVESTIGADOR_ASOCIADO` pueda ser externo, porque en cooperación internacional es razonable que otros
   roles (p.ej. `CODIRECTOR`) también sean ocupados por personal de una institución socia; `cat_roles_proyecto.permite_externo`
