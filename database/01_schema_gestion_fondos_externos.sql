@@ -289,6 +289,7 @@ CREATE TABLE usuarios (
     nombres             VARCHAR(150) NOT NULL,
     apellidos           VARCHAR(150) NOT NULL,
     email               VARCHAR(150) NOT NULL UNIQUE,
+    password_hash       VARCHAR(255) NOT NULL,           -- hash bcrypt (autenticación propia en el backend NestJS)
     telefono            VARCHAR(20),
     departamento_id     INTEGER REFERENCES cat_departamentos(id),
     indice_h_actual     SMALLINT NOT NULL DEFAULT 0 CHECK (indice_h_actual >= 0),
@@ -760,7 +761,7 @@ BEGIN
     NEW.updated_at = now();
     RETURN NEW;
 END;
-$$ LANGUAGE plpgsql;
+$$ LANGUAGE plpgsql SET search_path = gestion_fondos, public;
 
 CREATE TRIGGER trg_usuarios_updated_at       BEFORE UPDATE ON usuarios             FOR EACH ROW EXECUTE FUNCTION fn_set_updated_at();
 CREATE TRIGGER trg_convocatorias_updated_at  BEFORE UPDATE ON convocatorias        FOR EACH ROW EXECUTE FUNCTION fn_set_updated_at();
@@ -783,7 +784,7 @@ BEGIN
     END LOOP;
     RETURN v_fecha;
 END;
-$$ LANGUAGE plpgsql IMMUTABLE;
+$$ LANGUAGE plpgsql IMMUTABLE SET search_path = gestion_fondos, public;
 
 -- 13.3 Al insertar un proyecto: fija automáticamente el plazo máximo de registro (60 días
 --      laborables desde la adjudicación externa) y programa la alerta de vencimiento.
@@ -794,7 +795,7 @@ BEGIN
     END IF;
     RETURN NEW;
 END;
-$$ LANGUAGE plpgsql;
+$$ LANGUAGE plpgsql SET search_path = gestion_fondos, public;
 
 CREATE TRIGGER trg_proyecto_before_insert
     BEFORE INSERT ON proyectos
@@ -820,7 +821,7 @@ BEGIN
     END IF;
     RETURN NEW;
 END;
-$$ LANGUAGE plpgsql;
+$$ LANGUAGE plpgsql SET search_path = gestion_fondos, public;
 
 CREATE TRIGGER trg_proyecto_after_insert
     AFTER INSERT ON proyectos
@@ -839,7 +840,7 @@ BEGIN
     END IF;
     RETURN NEW;
 END;
-$$ LANGUAGE plpgsql;
+$$ LANGUAGE plpgsql SET search_path = gestion_fondos, public;
 
 CREATE TRIGGER trg_bloqueo_hitos
     BEFORE INSERT OR UPDATE ON hitos
@@ -872,7 +873,7 @@ BEGIN
     END IF;
     RETURN NEW;
 END;
-$$ LANGUAGE plpgsql;
+$$ LANGUAGE plpgsql SET search_path = gestion_fondos, public;
 
 CREATE TRIGGER trg_objetivos_valida_general
     BEFORE INSERT OR UPDATE ON proyecto_objetivos
@@ -896,7 +897,7 @@ BEGIN
     END IF;
     RETURN NEW;
 END;
-$$ LANGUAGE plpgsql;
+$$ LANGUAGE plpgsql SET search_path = gestion_fondos, public;
 
 CREATE TRIGGER trg_hitos_valida_objetivo
     BEFORE INSERT OR UPDATE ON hitos
@@ -918,7 +919,7 @@ BEGIN
     END IF;
     RETURN NEW;
 END;
-$$ LANGUAGE plpgsql;
+$$ LANGUAGE plpgsql SET search_path = gestion_fondos, public;
 
 CREATE TRIGGER trg_riesgos_valida_objetivo
     BEFORE INSERT OR UPDATE ON proyecto_riesgos

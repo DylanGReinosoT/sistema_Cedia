@@ -190,6 +190,7 @@ Personas del sistema: investigadores/docentes, directores, personal UGI.
 | `cedula` | VARCHAR(20) UNIQUE | — | Identificación única de la persona |
 | `nombres` / `apellidos` | VARCHAR(150) | — | Datos personales |
 | `email` | VARCHAR(150) UNIQUE | — | Correo institucional, usado como login/canal de notificación |
+| `password_hash` `V2` | VARCHAR(255) NOT NULL | — | Hash `bcrypt` de la contraseña; nunca se expone en respuestas de la API. Autenticación propia del backend NestJS (JWT emitido por la propia app), no delegada a un proveedor externo |
 | `telefono` | VARCHAR(20) | — | Opcional, canal SMS |
 | `departamento_id` | INTEGER | FK → `cat_departamentos.id` | Departamento de adscripción |
 | `indice_h_actual` | SMALLINT DEFAULT 0 | — | Última medición conocida del índice H (se detalla histórico en `indice_h_historico`) |

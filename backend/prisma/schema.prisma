@@ -1,0 +1,957 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+  schemas   = ["gestion_fondos"]
+}
+
+model cat_areas_conocimiento_espe {
+  id        Int         @id @default(autoincrement())
+  nombre    String      @unique @db.VarChar(150)
+  proyectos proyectos[]
+
+  @@schema("gestion_fondos")
+}
+
+model cat_areas_unesco {
+  id                  Int                   @id @default(autoincrement())
+  codigo              String                @unique @db.VarChar(10)
+  nombre              String                @db.VarChar(200)
+  cat_subareas_unesco cat_subareas_unesco[]
+
+  @@schema("gestion_fondos")
+}
+
+model cat_campos_amplios {
+  id                     Int                      @id @default(autoincrement())
+  codigo                 String                   @unique @db.VarChar(10)
+  nombre                 String                   @db.VarChar(200)
+  cat_campos_especificos cat_campos_especificos[]
+
+  @@schema("gestion_fondos")
+}
+
+model cat_campos_detallados {
+  id                     Int                    @id @default(autoincrement())
+  campo_especifico_id    Int
+  codigo                 String                 @unique @db.VarChar(10)
+  nombre                 String                 @db.VarChar(200)
+  cat_campos_especificos cat_campos_especificos @relation(fields: [campo_especifico_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  proyectos              proyectos[]
+
+  @@index([campo_especifico_id], map: "idx_camposdet_especifico")
+  @@schema("gestion_fondos")
+}
+
+model cat_campos_especificos {
+  id                    Int                     @id @default(autoincrement())
+  campo_amplio_id       Int
+  codigo                String                  @unique @db.VarChar(10)
+  nombre                String                  @db.VarChar(200)
+  cat_campos_detallados cat_campos_detallados[]
+  cat_campos_amplios    cat_campos_amplios      @relation(fields: [campo_amplio_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([campo_amplio_id], map: "idx_camposesp_amplio")
+  @@schema("gestion_fondos")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model cat_departamentos {
+  id                                                       Int                        @id @default(autoincrement())
+  nombre                                                   String                     @unique @db.VarChar(150)
+  tipo                                                     String                     @db.VarChar(20)
+  facultad                                                 String?                    @db.VarChar(150)
+  director_usuario_id                                      String?                    @db.Uuid
+  activo                                                   Boolean                    @default(true)
+  usuarios_cat_departamentos_director_usuario_idTousuarios usuarios?                  @relation("cat_departamentos_director_usuario_idTousuarios", fields: [director_usuario_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_departamento_director")
+  cat_grupos_investigacion                                 cat_grupos_investigacion[]
+  proyectos                                                proyectos[]
+  usuarios_usuarios_departamento_idTocat_departamentos     usuarios[]                 @relation("usuarios_departamento_idTocat_departamentos")
+
+  @@schema("gestion_fondos")
+}
+
+model cat_disciplinas_cientificas {
+  id        Int         @id @default(autoincrement())
+  nombre    String      @unique @db.VarChar(150)
+  proyectos proyectos[]
+
+  @@schema("gestion_fondos")
+}
+
+model cat_dominios_academicos {
+  id                       Int                        @id @default(autoincrement())
+  nombre                   String                     @unique @db.VarChar(200)
+  cat_lineas_investigacion cat_lineas_investigacion[]
+
+  @@schema("gestion_fondos")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model cat_entidades_financiadoras {
+  id               Int                @id @default(autoincrement())
+  nombre           String             @unique @db.VarChar(200)
+  pais_id          Int?
+  tipo             String             @db.VarChar(20)
+  sitio_web        String?            @db.VarChar(300)
+  correo_contacto  String?            @db.VarChar(150)
+  created_at       DateTime           @default(now()) @db.Timestamptz(6)
+  cat_paises       cat_paises?        @relation(fields: [pais_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  convocatorias    convocatorias[]
+  periodos_reporte periodos_reporte[]
+
+  @@schema("gestion_fondos")
+}
+
+model cat_grupos_investigacion {
+  id                Int                @id @default(autoincrement())
+  codigo            String             @unique @db.VarChar(20)
+  nombre            String             @db.VarChar(200)
+  departamento_id   Int?
+  cat_departamentos cat_departamentos? @relation(fields: [departamento_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  proyectos         proyectos[]
+
+  @@schema("gestion_fondos")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model cat_instituciones_socias {
+  id                            Int                             @id @default(autoincrement())
+  nombre                        String                          @db.VarChar(200)
+  pais_id                       Int?
+  tipo_institucion              String                          @db.VarChar(50)
+  cat_paises                    cat_paises?                     @relation(fields: [pais_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  proyecto_equipo               proyecto_equipo[]
+  proyecto_instituciones_socias proyecto_instituciones_socias[]
+
+  @@unique([nombre, pais_id])
+  @@schema("gestion_fondos")
+}
+
+model cat_lineas_investigacion {
+  id                      Int                     @id @default(autoincrement())
+  dominio_academico_id    Int
+  nombre                  String                  @db.VarChar(200)
+  cat_dominios_academicos cat_dominios_academicos @relation(fields: [dominio_academico_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  proyectos               proyectos[]
+
+  @@unique([dominio_academico_id, nombre])
+  @@index([dominio_academico_id], map: "idx_lineas_dominio")
+  @@schema("gestion_fondos")
+}
+
+model cat_objetivos_socioeconomicos {
+  id        Int         @id @default(autoincrement())
+  nombre    String      @unique @db.VarChar(200)
+  proyectos proyectos[]
+
+  @@schema("gestion_fondos")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model cat_ods {
+  id            Int             @id @default(autoincrement())
+  numero        Int             @unique @db.SmallInt
+  nombre        String          @db.VarChar(200)
+  cat_ods_metas cat_ods_metas[]
+
+  @@schema("gestion_fondos")
+}
+
+model cat_ods_metas {
+  id                 Int                  @id @default(autoincrement())
+  ods_id             Int
+  codigo             String               @db.VarChar(10)
+  descripcion        String
+  cat_ods            cat_ods              @relation(fields: [ods_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  proyecto_ods_metas proyecto_ods_metas[]
+
+  @@unique([ods_id, codigo])
+  @@index([ods_id], map: "idx_ods_metas_ods")
+  @@schema("gestion_fondos")
+}
+
+model cat_paises {
+  id                          Int                           @id @default(autoincrement())
+  nombre                      String                        @unique @db.VarChar(100)
+  codigo_iso                  String                        @unique @db.Char(2)
+  cat_entidades_financiadoras cat_entidades_financiadoras[]
+  cat_instituciones_socias    cat_instituciones_socias[]
+  patentes                    patentes[]
+
+  @@schema("gestion_fondos")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model cat_periodos_academicos {
+  id               Int                @id @default(autoincrement())
+  nombre           String             @db.VarChar(50)
+  anio             Int                @db.SmallInt
+  periodo          Int                @db.SmallInt
+  fecha_inicio     DateTime           @db.Date
+  fecha_fin        DateTime           @db.Date
+  liberacion_horas liberacion_horas[]
+  periodos_reporte periodos_reporte[]
+
+  @@unique([anio, periodo])
+  @@schema("gestion_fondos")
+}
+
+model cat_programas_postgrado {
+  id        Int         @id @default(autoincrement())
+  nombre    String      @unique @db.VarChar(200)
+  proyectos proyectos[]
+
+  @@schema("gestion_fondos")
+}
+
+model cat_roles {
+  id            Int             @id @default(autoincrement())
+  nombre        String          @unique @db.VarChar(50)
+  descripcion   String?
+  usuario_roles usuario_roles[]
+
+  @@schema("gestion_fondos")
+}
+
+model cat_roles_proyecto {
+  id              Int               @id @default(autoincrement())
+  codigo          String            @unique @db.VarChar(40)
+  nombre          String            @db.VarChar(100)
+  descripcion     String?
+  permite_externo Boolean           @default(false)
+  orden           Int?              @db.SmallInt
+  proyecto_equipo proyecto_equipo[]
+
+  @@schema("gestion_fondos")
+}
+
+model cat_subareas_unesco {
+  id               Int              @id @default(autoincrement())
+  area_unesco_id   Int
+  codigo           String           @unique @db.VarChar(10)
+  nombre           String           @db.VarChar(200)
+  cat_areas_unesco cat_areas_unesco @relation(fields: [area_unesco_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  proyectos        proyectos[]
+
+  @@index([area_unesco_id], map: "idx_subareas_area")
+  @@schema("gestion_fondos")
+}
+
+model cat_tipos_alerta {
+  id                   Int                    @id @default(autoincrement())
+  codigo               String                 @unique @db.VarChar(60)
+  nombre               String                 @db.VarChar(150)
+  descripcion          String?
+  dias_anticipacion    Int                    @default(0)
+  eventos_notificacion eventos_notificacion[]
+
+  @@schema("gestion_fondos")
+}
+
+model cat_tipos_investigacion {
+  id        Int         @id @default(autoincrement())
+  nombre    String      @unique @db.VarChar(100)
+  proyectos proyectos[]
+
+  @@schema("gestion_fondos")
+}
+
+model cat_tipos_requisito_documental {
+  id                               Int                                @id @default(autoincrement())
+  nombre                           String                             @unique @db.VarChar(150)
+  descripcion                      String?
+  orden                            Int                                @db.SmallInt
+  obligatorio                      Boolean                            @default(true)
+  proyecto_requisitos_documentales proyecto_requisitos_documentales[]
+
+  @@schema("gestion_fondos")
+}
+
+model cierres_proyecto {
+  id                   String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  proyecto_id          String        @db.Uuid
+  fecha_cierre         DateTime?     @db.Date
+  certificado_aval_url String?       @db.VarChar(400)
+  estado               estado_cierre @default(EN_PROCESO)
+  aprobado_por         String?       @db.Uuid
+  observaciones        String?
+  created_at           DateTime      @default(now()) @db.Timestamptz(6)
+  usuarios             usuarios?     @relation(fields: [aprobado_por], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  proyectos            proyectos     @relation(fields: [proyecto_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([proyecto_id], map: "idx_cierres_proyecto")
+  @@schema("gestion_fondos")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model convocatorias {
+  id                          String                      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  entidad_financiadora_id     Int
+  codigo                      String?                     @unique @db.VarChar(50)
+  nombre                      String                      @db.VarChar(250)
+  descripcion                 String?
+  fecha_apertura              DateTime                    @db.Date
+  fecha_cierre                DateTime                    @db.Date
+  presupuesto_referencial     Decimal?                    @db.Decimal(14, 2)
+  url_bases                   String?                     @db.VarChar(300)
+  estado                      estado_convocatoria         @default(ABIERTA)
+  created_at                  DateTime                    @default(now()) @db.Timestamptz(6)
+  updated_at                  DateTime                    @default(now()) @db.Timestamptz(6)
+  cat_entidades_financiadoras cat_entidades_financiadoras @relation(fields: [entidad_financiadora_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  proyectos                   proyectos[]
+
+  @@index([entidad_financiadora_id], map: "idx_convocatorias_entidad")
+  @@index([estado], map: "idx_convocatorias_estado")
+  @@schema("gestion_fondos")
+}
+
+model eventos_notificacion {
+  id                     String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  proyecto_id            String?             @db.Uuid
+  tipo_alerta_id         Int
+  usuario_destino_id     String              @db.Uuid
+  fecha_programada       DateTime            @db.Timestamptz(6)
+  fecha_envio            DateTime?           @db.Timestamptz(6)
+  canal                  canal_notificacion  @default(SISTEMA)
+  estado                 estado_notificacion @default(PENDIENTE)
+  mensaje                String
+  tabla_referencia       String?             @db.VarChar(50)
+  registro_referencia_id String?             @db.Uuid
+  metadata               Json?
+  created_at             DateTime            @default(now()) @db.Timestamptz(6)
+  proyectos              proyectos?          @relation(fields: [proyecto_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  cat_tipos_alerta       cat_tipos_alerta    @relation(fields: [tipo_alerta_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  usuarios               usuarios            @relation(fields: [usuario_destino_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([usuario_destino_id], map: "idx_notificaciones_destino")
+  @@index([fecha_programada, estado], map: "idx_notificaciones_programada")
+  @@index([proyecto_id], map: "idx_notificaciones_proyecto")
+  @@schema("gestion_fondos")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model hitos {
+  id                       String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  proyecto_id              String              @db.Uuid
+  objetivo_especifico_id   String?             @db.Uuid
+  nombre                   String              @db.VarChar(250)
+  descripcion              String?
+  orden                    Int?                @db.SmallInt
+  fecha_inicio_planificada DateTime            @db.Date
+  fecha_fin_planificada    DateTime            @db.Date
+  fecha_inicio_real        DateTime?           @db.Date
+  fecha_fin_real           DateTime?           @db.Date
+  porcentaje_avance        Int                 @default(0) @db.SmallInt
+  estado                   estado_hito_tarea   @default(NO_INICIADO)
+  created_at               DateTime            @default(now()) @db.Timestamptz(6)
+  updated_at               DateTime            @default(now()) @db.Timestamptz(6)
+  proyecto_objetivos       proyecto_objetivos? @relation(fields: [objetivo_especifico_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  proyectos                proyectos           @relation(fields: [proyecto_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  tareas                   tareas[]
+
+  @@index([objetivo_especifico_id], map: "idx_hitos_objetivo")
+  @@index([proyecto_id], map: "idx_hitos_proyecto")
+  @@schema("gestion_fondos")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model indice_h_historico {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  usuario_id     String   @db.Uuid
+  valor          Int      @db.SmallInt
+  fecha_medicion DateTime @default(dbgenerated("CURRENT_DATE")) @db.Date
+  fuente         String   @db.VarChar(50)
+  usuarios       usuarios @relation(fields: [usuario_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([usuario_id, fecha_medicion, fuente])
+  @@index([usuario_id], map: "idx_indice_h_usuario")
+  @@schema("gestion_fondos")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model informes_seguimiento {
+  id                           String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  proyecto_id                  String           @db.Uuid
+  periodo_reporte_id           String           @db.Uuid
+  fecha_limite_presentacion    DateTime         @db.Date
+  fecha_presentacion           DateTime?        @db.Timestamptz(6)
+  archivo_url                  String?          @db.VarChar(400)
+  avance_tecnico_pct           Int?             @db.SmallInt
+  avance_financiero_pct        Int?             @db.SmallInt
+  horas_liberadas_justificadas Decimal?         @db.Decimal(6, 2)
+  estado                       estado_informe   @default(PENDIENTE)
+  observaciones                String?
+  presentado_por               String?          @db.Uuid
+  created_at                   DateTime         @default(now()) @db.Timestamptz(6)
+  periodos_reporte             periodos_reporte @relation(fields: [periodo_reporte_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  usuarios                     usuarios?        @relation(fields: [presentado_por], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  proyectos                    proyectos        @relation(fields: [proyecto_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([proyecto_id, periodo_reporte_id])
+  @@index([estado], map: "idx_informes_estado")
+  @@index([proyecto_id], map: "idx_informes_proyecto")
+  @@schema("gestion_fondos")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model liberacion_horas {
+  id                                               String                  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  proyecto_id                                      String                  @db.Uuid
+  usuario_id                                       String                  @db.Uuid
+  periodo_academico_id                             Int
+  horas_semanales                                  Decimal                 @db.Decimal(5, 2)
+  horas_totales_periodo                            Decimal?                @db.Decimal(6, 2)
+  justificacion                                    String
+  estado                                           estado_liberacion_horas @default(SOLICITADA)
+  aprobado_por                                     String?                 @db.Uuid
+  fecha_aprobacion                                 DateTime?               @db.Timestamptz(6)
+  usuarios_liberacion_horas_aprobado_porTousuarios usuarios?               @relation("liberacion_horas_aprobado_porTousuarios", fields: [aprobado_por], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  cat_periodos_academicos                          cat_periodos_academicos @relation(fields: [periodo_academico_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  proyectos                                        proyectos               @relation(fields: [proyecto_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  usuarios_liberacion_horas_usuario_idTousuarios   usuarios                @relation("liberacion_horas_usuario_idTousuarios", fields: [usuario_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@unique([proyecto_id, usuario_id, periodo_academico_id])
+  @@index([periodo_academico_id], map: "idx_liberacion_periodo")
+  @@index([usuario_id], map: "idx_liberacion_usuario")
+  @@schema("gestion_fondos")
+}
+
+model patentes {
+  id              String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  proyecto_id     String         @db.Uuid
+  titulo          String         @db.VarChar(400)
+  numero_registro String?        @db.VarChar(100)
+  pais_id         Int?
+  fecha_solicitud DateTime?      @db.Date
+  fecha_concesion DateTime?      @db.Date
+  estado          estado_patente @default(EN_TRAMITE)
+  url_documento   String?        @db.VarChar(400)
+  cat_paises      cat_paises?    @relation(fields: [pais_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  proyectos       proyectos      @relation(fields: [proyecto_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([proyecto_id], map: "idx_patentes_proyecto")
+  @@schema("gestion_fondos")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model periodos_reporte {
+  id                          String                       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tipo                        tipo_calendario_informe
+  entidad_financiadora_id     Int?
+  periodo_academico_id        Int?
+  anio                        Int                          @db.SmallInt
+  fecha_corte                 DateTime                     @db.Date
+  etiqueta                    String                       @db.VarChar(100)
+  informes_seguimiento        informes_seguimiento[]
+  cat_entidades_financiadoras cat_entidades_financiadoras? @relation(fields: [entidad_financiadora_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  cat_periodos_academicos     cat_periodos_academicos?     @relation(fields: [periodo_academico_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@unique([tipo, entidad_financiadora_id, periodo_academico_id, fecha_corte])
+  @@index([tipo], map: "idx_periodos_reporte_tipo")
+  @@schema("gestion_fondos")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model prorrogas {
+  id                                          String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  proyecto_id                                 String          @db.Uuid
+  fecha_solicitud                             DateTime        @default(now()) @db.Timestamptz(6)
+  fecha_vencimiento_original                  DateTime        @db.Date
+  fecha_nueva_vencimiento                     DateTime        @db.Date
+  motivo                                      String
+  documento_aval_externo_url                  String          @db.VarChar(400)
+  estado                                      estado_prorroga @default(SOLICITADA)
+  fecha_aval_externo                          DateTime?       @db.Date
+  solicitado_por                              String?         @db.Uuid
+  aprobado_por                                String?         @db.Uuid
+  usuarios_prorrogas_aprobado_porTousuarios   usuarios?       @relation("prorrogas_aprobado_porTousuarios", fields: [aprobado_por], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  proyectos                                   proyectos       @relation(fields: [proyecto_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  usuarios_prorrogas_solicitado_porTousuarios usuarios?       @relation("prorrogas_solicitado_porTousuarios", fields: [solicitado_por], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([proyecto_id], map: "idx_prorrogas_proyecto")
+  @@schema("gestion_fondos")
+}
+
+model proyecto_aprobaciones {
+  id               String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  proyecto_id      String            @db.Uuid
+  nivel            nivel_aprobacion
+  aprobador_id     String?           @db.Uuid
+  fecha_solicitud  DateTime          @default(now()) @db.Timestamptz(6)
+  fecha_resolucion DateTime?         @db.Timestamptz(6)
+  estado           estado_aprobacion @default(PENDIENTE)
+  observaciones    String?
+  usuarios         usuarios?         @relation(fields: [aprobador_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  proyectos        proyectos         @relation(fields: [proyecto_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([proyecto_id, nivel])
+  @@index([proyecto_id], map: "idx_aprobaciones_proyecto")
+  @@schema("gestion_fondos")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model proyecto_equipo {
+  id                       String                    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  proyecto_id              String                    @db.Uuid
+  rol_proyecto_id          Int
+  usuario_id               String?                   @db.Uuid
+  externo_identificacion   String?                   @db.VarChar(20)
+  externo_nombres          String?                   @db.VarChar(150)
+  externo_apellidos        String?                   @db.VarChar(150)
+  externo_institucion_id   Int?
+  externo_correo           String?                   @db.VarChar(150)
+  fecha_incorporacion      DateTime                  @default(dbgenerated("CURRENT_DATE")) @db.Date
+  fecha_salida             DateTime?                 @db.Date
+  cat_instituciones_socias cat_instituciones_socias? @relation(fields: [externo_institucion_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  proyectos                proyectos                 @relation(fields: [proyecto_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  cat_roles_proyecto       cat_roles_proyecto        @relation(fields: [rol_proyecto_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  usuarios                 usuarios?                 @relation(fields: [usuario_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([externo_institucion_id], map: "idx_equipo_externo_institucion")
+  @@index([rol_proyecto_id], map: "idx_equipo_rol")
+  @@index([usuario_id], map: "idx_equipo_usuario")
+  @@schema("gestion_fondos")
+}
+
+model proyecto_formulacion {
+  proyecto_id                       String    @id @db.Uuid
+  diagnostico_problema              String?
+  linea_base                        String?
+  metodologia_investigacion         String?
+  viabilidad_tecnica                String?
+  estrategia_difusion_transferencia String?
+  updated_at                        DateTime  @default(now()) @db.Timestamptz(6)
+  proyectos                         proyectos @relation(fields: [proyecto_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@schema("gestion_fondos")
+}
+
+model proyecto_impactos {
+  id          String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  proyecto_id String            @db.Uuid
+  categoria   categoria_impacto
+  descripcion String
+  created_at  DateTime          @default(now()) @db.Timestamptz(6)
+  proyectos   proyectos         @relation(fields: [proyecto_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([proyecto_id], map: "idx_impactos_proyecto")
+  @@schema("gestion_fondos")
+}
+
+model proyecto_instituciones_socias {
+  proyecto_id              String                   @db.Uuid
+  institucion_socia_id     Int
+  tipo_cooperacion         String?                  @db.VarChar(100)
+  fecha_vinculacion        DateTime                 @default(dbgenerated("CURRENT_DATE")) @db.Date
+  cat_instituciones_socias cat_instituciones_socias @relation(fields: [institucion_socia_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  proyectos                proyectos                @relation(fields: [proyecto_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@id([proyecto_id, institucion_socia_id])
+  @@schema("gestion_fondos")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model proyecto_objetivos {
+  id                       String                 @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  proyecto_id              String                 @db.Uuid
+  tipo_objetivo            tipo_objetivo_proyecto
+  objetivo_general_id      String?                @db.Uuid
+  descripcion              String
+  indicador                String?
+  meta                     String?
+  orden                    Int?                   @db.SmallInt
+  hitos                    hitos[]
+  proyecto_objetivos       proyecto_objetivos?    @relation("proyecto_objetivosToproyecto_objetivos", fields: [objetivo_general_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  other_proyecto_objetivos proyecto_objetivos[]   @relation("proyecto_objetivosToproyecto_objetivos")
+  proyectos                proyectos              @relation(fields: [proyecto_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  proyecto_riesgos         proyecto_riesgos[]
+
+  @@index([objetivo_general_id], map: "idx_objetivos_general")
+  @@index([proyecto_id], map: "idx_objetivos_proyecto")
+  @@schema("gestion_fondos")
+}
+
+model proyecto_ods_metas {
+  proyecto_id   String        @db.Uuid
+  ods_meta_id   Int
+  cat_ods_metas cat_ods_metas @relation(fields: [ods_meta_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  proyectos     proyectos     @relation(fields: [proyecto_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@id([proyecto_id, ods_meta_id])
+  @@schema("gestion_fondos")
+}
+
+model proyecto_requisitos_documentales {
+  id                             String                         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  proyecto_id                    String                         @db.Uuid
+  tipo_requisito_id              Int
+  archivo_url                    String?                        @db.VarChar(400)
+  fecha_carga                    DateTime?                      @db.Timestamptz(6)
+  cargado_por                    String?                        @db.Uuid
+  estado                         estado_requisito               @default(PENDIENTE)
+  observaciones                  String?
+  usuarios                       usuarios?                      @relation(fields: [cargado_por], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  proyectos                      proyectos                      @relation(fields: [proyecto_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  cat_tipos_requisito_documental cat_tipos_requisito_documental @relation(fields: [tipo_requisito_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@unique([proyecto_id, tipo_requisito_id], map: "proyecto_requisitos_documenta_proyecto_id_tipo_requisito_id_key")
+  @@index([proyecto_id], map: "idx_requisitos_proyecto")
+  @@schema("gestion_fondos")
+}
+
+model proyecto_riesgos {
+  id                   String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  proyecto_id          String              @db.Uuid
+  objetivo_afectado_id String?             @db.Uuid
+  riesgo               String
+  probabilidad         nivel_riesgo
+  impacto              nivel_riesgo
+  accion_mitigacion    String
+  created_at           DateTime            @default(now()) @db.Timestamptz(6)
+  proyecto_objetivos   proyecto_objetivos? @relation(fields: [objetivo_afectado_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  proyectos            proyectos           @relation(fields: [proyecto_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([proyecto_id], map: "idx_riesgos_proyecto")
+  @@schema("gestion_fondos")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model proyectos {
+  id                                String                             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  codigo_proyecto                   String                             @unique @db.VarChar(50)
+  convocatoria_id                   String                             @db.Uuid
+  titulo                            String                             @db.VarChar(300)
+  titulo_ingles                     String?                            @db.VarChar(300)
+  resumen                           String?
+  investigador_principal_id         String                             @db.Uuid
+  departamento_id                   Int
+  programa_postgrado_id             Int?
+  linea_investigacion_id            Int
+  grupo_investigacion_id            Int
+  tipo_investigacion_id             Int
+  disciplina_cientifica_id          Int
+  objetivo_socioeconomico_id        Int
+  area_conocimiento_espe_id         Int
+  subarea_unesco_id                 Int
+  campo_detallado_id                Int
+  fecha_adjudicacion_externa        DateTime                           @db.Date
+  fecha_limite_registro             DateTime?                          @db.Date
+  fecha_registro                    DateTime?                          @db.Date
+  presupuesto_inversion_espe        Decimal                            @default(0) @db.Decimal(14, 2)
+  presupuesto_corriente_espe        Decimal                            @default(0) @db.Decimal(14, 2)
+  presupuesto_inversion_auspiciante Decimal                            @default(0) @db.Decimal(14, 2)
+  presupuesto_corriente_auspiciante Decimal                            @default(0) @db.Decimal(14, 2)
+  presupuesto_total                 Decimal?                           @default(dbgenerated("(((presupuesto_inversion_espe + presupuesto_corriente_espe) + presupuesto_inversion_auspiciante) + presupuesto_corriente_auspiciante)")) @db.Decimal(14, 2)
+  fecha_inicio_ejecucion            DateTime?                          @db.Date
+  fecha_fin_planificada             DateTime?                          @db.Date
+  fecha_fin_real                    DateTime?                          @db.Date
+  estado                            estado_proyecto                    @default(EN_EDICION)
+  created_at                        DateTime                           @default(now()) @db.Timestamptz(6)
+  updated_at                        DateTime                           @default(now()) @db.Timestamptz(6)
+  cierres_proyecto                  cierres_proyecto[]
+  eventos_notificacion              eventos_notificacion[]
+  hitos                             hitos[]
+  informes_seguimiento              informes_seguimiento[]
+  liberacion_horas                  liberacion_horas[]
+  patentes                          patentes[]
+  prorrogas                         prorrogas[]
+  proyecto_aprobaciones             proyecto_aprobaciones[]
+  proyecto_equipo                   proyecto_equipo[]
+  proyecto_formulacion              proyecto_formulacion?
+  proyecto_impactos                 proyecto_impactos[]
+  proyecto_instituciones_socias     proyecto_instituciones_socias[]
+  proyecto_objetivos                proyecto_objetivos[]
+  proyecto_ods_metas                proyecto_ods_metas[]
+  proyecto_requisitos_documentales  proyecto_requisitos_documentales[]
+  proyecto_riesgos                  proyecto_riesgos[]
+  cat_areas_conocimiento_espe       cat_areas_conocimiento_espe        @relation(fields: [area_conocimiento_espe_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  cat_campos_detallados             cat_campos_detallados              @relation(fields: [campo_detallado_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  convocatorias                     convocatorias                      @relation(fields: [convocatoria_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  cat_departamentos                 cat_departamentos                  @relation(fields: [departamento_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  cat_disciplinas_cientificas       cat_disciplinas_cientificas        @relation(fields: [disciplina_cientifica_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  cat_grupos_investigacion          cat_grupos_investigacion           @relation(fields: [grupo_investigacion_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  usuarios                          usuarios                           @relation(fields: [investigador_principal_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  cat_lineas_investigacion          cat_lineas_investigacion           @relation(fields: [linea_investigacion_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  cat_objetivos_socioeconomicos     cat_objetivos_socioeconomicos      @relation(fields: [objetivo_socioeconomico_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  cat_programas_postgrado           cat_programas_postgrado?           @relation(fields: [programa_postgrado_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  cat_subareas_unesco               cat_subareas_unesco                @relation(fields: [subarea_unesco_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  cat_tipos_investigacion           cat_tipos_investigacion            @relation(fields: [tipo_investigacion_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  publicaciones                     publicaciones[]
+
+  @@index([campo_detallado_id], map: "idx_proyectos_campo_detallado")
+  @@index([convocatoria_id], map: "idx_proyectos_convocatoria")
+  @@index([departamento_id], map: "idx_proyectos_departamento")
+  @@index([estado], map: "idx_proyectos_estado")
+  @@index([fecha_limite_registro], map: "idx_proyectos_fecha_limite")
+  @@index([grupo_investigacion_id], map: "idx_proyectos_grupo_investigacion")
+  @@index([investigador_principal_id], map: "idx_proyectos_investigador")
+  @@index([linea_investigacion_id], map: "idx_proyectos_linea_investigacion")
+  @@schema("gestion_fondos")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model publicacion_autores {
+  publicacion_id       String        @db.Uuid
+  orden_autor          Int           @db.SmallInt
+  usuario_id           String?       @db.Uuid
+  nombre_autor_externo String?       @db.VarChar(200)
+  publicaciones        publicaciones @relation(fields: [publicacion_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  usuarios             usuarios?     @relation(fields: [usuario_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@id([publicacion_id, orden_autor])
+  @@schema("gestion_fondos")
+}
+
+model publicaciones {
+  id                  String                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  proyecto_id         String                @db.Uuid
+  titulo              String                @db.VarChar(400)
+  tipo                tipo_publicacion      @default(ARTICULO)
+  revista_evento      String?               @db.VarChar(250)
+  doi                 String?               @db.VarChar(150)
+  fecha_publicacion   DateTime?             @db.Date
+  indexacion          String?               @db.VarChar(100)
+  url                 String?               @db.VarChar(400)
+  created_at          DateTime              @default(now()) @db.Timestamptz(6)
+  publicacion_autores publicacion_autores[]
+  proyectos           proyectos             @relation(fields: [proyecto_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([proyecto_id], map: "idx_publicaciones_proyecto")
+  @@schema("gestion_fondos")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model tareas {
+  id                       String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  hito_id                  String            @db.Uuid
+  nombre                   String            @db.VarChar(250)
+  descripcion              String?
+  responsable_id           String?           @db.Uuid
+  fecha_inicio_planificada DateTime          @db.Date
+  fecha_fin_planificada    DateTime          @db.Date
+  fecha_inicio_real        DateTime?         @db.Date
+  fecha_fin_real           DateTime?         @db.Date
+  porcentaje_avance        Int               @default(0) @db.SmallInt
+  recursos_asignados       String?
+  estado                   estado_hito_tarea @default(NO_INICIADO)
+  hitos                    hitos             @relation(fields: [hito_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  usuarios                 usuarios?         @relation(fields: [responsable_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([hito_id], map: "idx_tareas_hito")
+  @@index([responsable_id], map: "idx_tareas_responsable")
+  @@schema("gestion_fondos")
+}
+
+model usuario_roles {
+  usuario_id       String    @db.Uuid
+  rol_id           Int
+  fecha_asignacion DateTime  @default(now()) @db.Timestamptz(6)
+  cat_roles        cat_roles @relation(fields: [rol_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  usuarios         usuarios  @relation(fields: [usuario_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@id([usuario_id, rol_id])
+  @@schema("gestion_fondos")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model usuarios {
+  id                                                                String                             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  cedula                                                            String                             @unique @db.VarChar(20)
+  nombres                                                           String                             @db.VarChar(150)
+  apellidos                                                         String                             @db.VarChar(150)
+  email                                                             String                             @unique @db.VarChar(150)
+  password_hash                                                     String                             @db.VarChar(255)
+  telefono                                                          String?                            @db.VarChar(20)
+  departamento_id                                                   Int?
+  indice_h_actual                                                   Int                                @default(0) @db.SmallInt
+  activo                                                            Boolean                            @default(true)
+  created_at                                                        DateTime                           @default(now()) @db.Timestamptz(6)
+  updated_at                                                        DateTime                           @default(now()) @db.Timestamptz(6)
+  cat_departamentos_cat_departamentos_director_usuario_idTousuarios cat_departamentos[]                @relation("cat_departamentos_director_usuario_idTousuarios")
+  cierres_proyecto                                                  cierres_proyecto[]
+  eventos_notificacion                                              eventos_notificacion[]
+  indice_h_historico                                                indice_h_historico[]
+  informes_seguimiento                                              informes_seguimiento[]
+  liberacion_horas_liberacion_horas_aprobado_porTousuarios          liberacion_horas[]                 @relation("liberacion_horas_aprobado_porTousuarios")
+  liberacion_horas_liberacion_horas_usuario_idTousuarios            liberacion_horas[]                 @relation("liberacion_horas_usuario_idTousuarios")
+  prorrogas_prorrogas_aprobado_porTousuarios                        prorrogas[]                        @relation("prorrogas_aprobado_porTousuarios")
+  prorrogas_prorrogas_solicitado_porTousuarios                      prorrogas[]                        @relation("prorrogas_solicitado_porTousuarios")
+  proyecto_aprobaciones                                             proyecto_aprobaciones[]
+  proyecto_equipo                                                   proyecto_equipo[]
+  proyecto_requisitos_documentales                                  proyecto_requisitos_documentales[]
+  proyectos                                                         proyectos[]
+  publicacion_autores                                               publicacion_autores[]
+  tareas                                                            tareas[]
+  usuario_roles                                                     usuario_roles[]
+  cat_departamentos_usuarios_departamento_idTocat_departamentos     cat_departamentos?                 @relation("usuarios_departamento_idTocat_departamentos", fields: [departamento_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@schema("gestion_fondos")
+}
+
+enum canal_notificacion {
+  EMAIL
+  SISTEMA
+  SMS
+
+  @@schema("gestion_fondos")
+}
+
+enum categoria_impacto {
+  SOCIAL
+  CIENTIFICO
+  ECONOMICO
+  POLITICO
+  AMBIENTAL
+  SOSTENIBILIDAD_GENERO
+
+  @@schema("gestion_fondos")
+}
+
+enum estado_aprobacion {
+  PENDIENTE
+  APROBADO
+  RECHAZADO
+  DEVUELTO
+
+  @@schema("gestion_fondos")
+}
+
+enum estado_cierre {
+  EN_PROCESO
+  CERTIFICADO_EMITIDO
+  OBSERVADO
+
+  @@schema("gestion_fondos")
+}
+
+enum estado_convocatoria {
+  ABIERTA
+  CERRADA
+  ANULADA
+
+  @@schema("gestion_fondos")
+}
+
+enum estado_hito_tarea {
+  NO_INICIADO
+  EN_PROGRESO
+  COMPLETADO
+  ATRASADO
+  CANCELADO
+
+  @@schema("gestion_fondos")
+}
+
+enum estado_informe {
+  PENDIENTE
+  EN_ELABORACION
+  PRESENTADO
+  OBSERVADO
+  APROBADO
+  ATRASADO
+
+  @@schema("gestion_fondos")
+}
+
+enum estado_liberacion_horas {
+  SOLICITADA
+  APROBADA
+  RECHAZADA
+  FINALIZADA
+
+  @@schema("gestion_fondos")
+}
+
+enum estado_notificacion {
+  PENDIENTE
+  ENVIADA
+  LEIDA
+  FALLIDA
+
+  @@schema("gestion_fondos")
+}
+
+enum estado_patente {
+  EN_TRAMITE
+  CONCEDIDA
+  RECHAZADA
+
+  @@schema("gestion_fondos")
+}
+
+enum estado_prorroga {
+  SOLICITADA
+  AVALADA_EXTERNO
+  RECHAZADA
+  APLICADA
+
+  @@schema("gestion_fondos")
+}
+
+enum estado_proyecto {
+  EN_EDICION
+  POSTULADO
+  EN_REVISION_DEPARTAMENTAL
+  EN_REVISION_UGI
+  APROBADO
+  EN_EJECUCION
+  EN_CIERRE
+  BLOQUEADO
+  CERRADO
+  RECHAZADO
+
+  @@schema("gestion_fondos")
+}
+
+enum estado_requisito {
+  PENDIENTE
+  CARGADO
+  VALIDADO
+  RECHAZADO
+
+  @@schema("gestion_fondos")
+}
+
+enum nivel_aprobacion {
+  DEPARTAMENTO
+  UGI
+
+  @@schema("gestion_fondos")
+}
+
+enum nivel_riesgo {
+  ALTO
+  MEDIO
+  BAJO
+
+  @@schema("gestion_fondos")
+}
+
+enum tipo_calendario_informe {
+  EXTERNO
+  INTERNO
+
+  @@schema("gestion_fondos")
+}
+
+enum tipo_objetivo_proyecto {
+  GENERAL
+  ESPECIFICO
+
+  @@schema("gestion_fondos")
+}
+
+enum tipo_publicacion {
+  ARTICULO
+  LIBRO
+  CAPITULO_LIBRO
+  PONENCIA
+  OTRO
+
+  @@schema("gestion_fondos")
+}
