@@ -52,3 +52,11 @@ export function updateProyecto(id: string, body: Partial<ProyectoInput>) {
 export function deleteProyecto(id: string) {
   return api.delete<void>(`/proyectos/${id}`);
 }
+
+/** Solo ADMINISTRADOR. Ver nota en el backend: quien crea el proyecto queda como
+ * investigador principal "provisional" hasta reasignarlo aquí al investigador real. */
+export function reassignInvestigadorPrincipal(id: string, investigadorPrincipalId: string) {
+  return api.patch<Proyecto>(`/proyectos/${id}/investigador-principal`, {
+    investigador_principal_id: investigadorPrincipalId,
+  });
+}

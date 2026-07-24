@@ -16,6 +16,34 @@ export function getUsuario(id: string) {
   return api.get<Usuario>(`/usuarios/${id}`);
 }
 
+export interface UsuarioBasico {
+  id: string;
+  nombres: string;
+  apellidos: string;
+  email: string;
+}
+
+/** Cualquier autenticado puede llamarlo (a diferencia de listUsuarios) — pensado para
+ * selectores de "miembro interno" en formularios. */
+export function listUsuariosBasico() {
+  return api.get<UsuarioBasico[]>("/usuarios/basico");
+}
+
+export interface CreateUsuarioInput {
+  cedula: string;
+  nombres: string;
+  apellidos: string;
+  email: string;
+  telefono?: string;
+  departamento_id?: number;
+}
+
+/** Solo ADMINISTRADOR. Crea el usuario con una contraseña temporal (devuelta una sola
+ * vez en `temporaryPassword`) sin que la persona tenga que registrarse por su cuenta. */
+export function createUsuario(body: CreateUsuarioInput) {
+  return api.post<Usuario & { temporaryPassword: string }>("/usuarios", body);
+}
+
 export interface UpdateUsuarioInput {
   nombres?: string;
   apellidos?: string;

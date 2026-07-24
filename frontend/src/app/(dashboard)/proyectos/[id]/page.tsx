@@ -5,11 +5,21 @@ import { useRouter } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Dialog } from "@/components/ui/dialog";
+import { Field, Select } from "@/components/ui/input";
 import { ErrorAlert, LoadingState } from "@/components/ui/feedback";
 import { ProyectoForm } from "@/components/proyectos/proyecto-form";
-import { getProyecto, updateProyecto, deleteProyecto } from "@/lib/api/proyectos";
+import {
+  getProyecto,
+  updateProyecto,
+  deleteProyecto,
+  reassignInvestigadorPrincipal,
+} from "@/lib/api/proyectos";
+import { listUsuarios } from "@/lib/api/usuarios";
 import { submitAprobacion } from "@/lib/api/proyecto/aprobaciones";
 import { useCatalogoLabel } from "@/hooks/use-catalogos";
+import { useHasRole } from "@/hooks/use-session";
+import { ROLES } from "@/lib/auth/roles";
 import { friendlyErrorMessage } from "@/lib/api/errors";
 import { formatCurrency, formatDate, toDateInputValue } from "@/lib/utils/format";
 import type { ProyectoFormInput } from "@/lib/validation/proyectos";
@@ -23,6 +33,8 @@ export default function ProyectoOverviewPage({
   const router = useRouter();
   const queryClient = useQueryClient();
   const [editing, setEditing] = useState(false);
+  const [reassignOpen, setReassignOpen] = useState(false);
+  const isAdmin = useHasRole([ROLES.ADMINISTRADOR]);
 
   const { data: proyecto, isLoading } = useQuery({
     queryKey: ["proyectos", id],
@@ -140,6 +152,25 @@ export default function ProyectoOverviewPage({
         />
       )}
 
+      <Card>
+        <CardHeader>
+          <CardTitle>Investigador principal</CardTitle>
+          {isAdmin && (
+            <Button size="sm" variant="outline" onClick={() => setReassignOpen(true)}>
+              Reasignar
+            </Button>
+          )}
+        </CardHeader>
+        <CardContent>
+          <p className="text-sm font-medium text-slate-800">
+            {proyecto.usuarios
+              ? `${proyecto.usuarios.nombres} ${proyecto.usuarios.apellidos}`
+              : "—"}
+          </p>
+          <p className="text-xs text-slate-500">{proyecto.usuarios?.email}</p>
+        </CardContent>
+      </Card>
+
       {proyecto.resumen && (
         <Card>
           <CardHeader>
@@ -193,6 +224,14 @@ export default function ProyectoOverviewPage({
           </dl>
         </CardContent>
       </Card>
+
+      {reassignOpen && (
+        <ReassignDialog
+          proyectoId={id}
+          currentId={proyecto.investigador_principal_id}
+          onClose={() => setReassignOpen(false)}
+        />
+      )}
     </div>
   );
 }
@@ -203,5 +242,68 @@ function Info({ label, value }: { label: string; value?: string | null }) {
       <dt className="text-slate-500">{label}</dt>
       <dd className="font-medium text-slate-800">{value || "—"}</dd>
     </div>
+  );
+}
+
+function ReassignDialog({
+  proyectoId,
+  currentId,
+  onClose,
+}: {
+  proyectoId: string;
+  currentId: string;
+  onClose: () => void;
+}) {
+  const queryClient = useQueryClient();
+  const [selected, setSelected] = useState(currentId);
+
+  const { data: usuarios, isLoading } = useQuery({
+    queryKey: ["usuarios", "all"],
+    queryFn: () => listUsuarios(),
+  });
+
+  const mutation = useMutation({
+    mutationFn: () => reassignInvestigadorPrincipal(proyectoId, selected),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["proyectos", proyectoId] });
+      onClose();
+    },
+  });
+
+  return (
+    <Dialog open onClose={onClose} title="Reasignar investigador principal">
+      <div className="space-y-4">
+        <p className="text-xs text-slate-500">
+          Quien crea el proyecto queda como investigador principal provisional. Aquí se
+          reasigna al investigador real una vez que tenga cuenta en el sistema.
+        </p>
+        {mutation.isError && <ErrorAlert message={friendlyErrorMessage(mutation.error)} />}
+        <Field label="Nuevo investigador principal" required>
+          <Select
+            value={selected}
+            onChange={(e) => setSelected(e.target.value)}
+            disabled={isLoading}
+          >
+            {usuarios?.map((u) => (
+              <option key={u.id} value={u.id}>
+                {u.nombres} {u.apellidos} ({u.email})
+              </option>
+            ))}
+          </Select>
+        </Field>
+        <div className="flex justify-end gap-2">
+          <Button type="button" variant="outline" onClick={onClose}>
+            Cancelar
+          </Button>
+          <Button
+            disabled={!selected || selected === currentId}
+            loading={mutation.isPending}
+            onClick={() => mutation.mutate()}
+          >
+            Reasignar
+          </Button>
+        </div>
+      </div>
+    </Dialog>
   );
 }

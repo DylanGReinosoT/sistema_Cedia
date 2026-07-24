@@ -14,7 +14,10 @@ import { ProyectosService } from './proyectos.service';
 import { CreateProyectoDto } from './dto/create-proyecto.dto';
 import { UpdateProyectoDto } from './dto/update-proyecto.dto';
 import { FindProyectosQueryDto } from './dto/find-proyectos-query.dto';
+import { ReassignInvestigadorPrincipalDto } from './dto/reassign-investigador-principal.dto';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
+import { Roles } from '../../common/decorators/roles.decorator';
+import { ROLES } from '../../common/constants/roles.constant';
 import type { AuthenticatedUser } from '../auth/interfaces/jwt-payload.interface';
 
 @ApiBearerAuth()
@@ -50,5 +53,23 @@ export class ProyectosController {
   @Delete(':id')
   remove(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: AuthenticatedUser) {
     return this.proyectosService.remove(id, user);
+  }
+
+  /**
+   * Reasigna el investigador principal. Solo ADMINISTRADOR: en esta plataforma (gestión de
+   * fondos externos) quien registra el proyecto suele quedar como principal "provisional"
+   * hasta que el investigador real (a veces externo, a veces sin cuenta todavía) tenga
+   * usuario en el sistema.
+   */
+  @Patch(':id/investigador-principal')
+  @Roles(ROLES.ADMINISTRADOR)
+  reassignInvestigadorPrincipal(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: ReassignInvestigadorPrincipalDto,
+  ) {
+    return this.proyectosService.reassignInvestigadorPrincipal(
+      id,
+      dto.investigador_principal_id,
+    );
   }
 }

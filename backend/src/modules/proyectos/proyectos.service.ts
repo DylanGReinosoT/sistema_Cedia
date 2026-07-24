@@ -45,6 +45,7 @@ export class ProyectosService {
       where: { id },
       include: {
         convocatorias: { include: { cat_entidades_financiadoras: true } },
+        usuarios: { select: { id: true, nombres: true, apellidos: true, email: true } },
         cat_departamentos: true,
         cat_lineas_investigacion: true,
         cat_grupos_investigacion: true,
@@ -93,6 +94,23 @@ export class ProyectosService {
   async remove(id: string, user: AuthenticatedUser) {
     await this.assertPuedeEditar(id, user);
     await this.prisma.proyectos.delete({ where: { id } });
+  }
+
+  /**
+   * Reasigna investigador_principal_id. Solo ADMINISTRADOR (ver @Roles en el controller).
+   *
+   * Esta plataforma solo gestiona proyectos de fondos externos: el investigador principal
+   * real suele ser externo o no tener cuenta todavía en el momento del registro. El flujo
+   * previsto es que un ADMINISTRADOR cree el proyecto (queda como investigador principal
+   * "provisional", tal como asigna `create()` automáticamente) y luego lo reasigne aquí al
+   * usuario correcto una vez que este exista en el sistema.
+   */
+  async reassignInvestigadorPrincipal(id: string, nuevoInvestigadorPrincipalId: string) {
+    await this.findByIdOrFail(id);
+    return this.prisma.proyectos.update({
+      where: { id },
+      data: { investigador_principal_id: nuevoInvestigadorPrincipalId },
+    });
   }
 
   /**

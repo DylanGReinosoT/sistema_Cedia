@@ -4,7 +4,9 @@ import { optionalCoercedInt } from "./common";
 export const miembroEquipoSchema = z
   .object({
     rol_proyecto_id: z.coerce.number().int().min(1, "Requerido"),
-    tipo: z.enum(["interno", "externo"]),
+    // "nuevo" (alta de usuario por un Administrador) no pasa por este schema — se maneja
+    // aparte en NuevoUsuarioSection porque implica dos llamadas encadenadas a la API.
+    tipo: z.enum(["interno", "nuevo", "externo"]),
     usuario_id: z.string().optional().or(z.literal("")),
     externo_identificacion: z.string().max(20).optional().or(z.literal("")),
     externo_nombres: z.string().max(150).optional().or(z.literal("")),

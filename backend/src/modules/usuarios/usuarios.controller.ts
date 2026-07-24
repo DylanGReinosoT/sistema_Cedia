@@ -12,6 +12,7 @@ import {
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { UsuariosService } from './usuarios.service';
 import { UpdateUsuarioDto } from './dto/update-usuario.dto';
+import { CreateUsuarioDto } from './dto/create-usuario.dto';
 import { AssignRoleDto } from './dto/assign-role.dto';
 import { FindUsuariosQueryDto } from './dto/find-usuarios-query.dto';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
@@ -31,6 +32,26 @@ export class UsuariosController {
   @Get()
   findAll(@Query() query: FindUsuariosQueryDto) {
     return this.usuariosService.findAll(query);
+  }
+
+  /**
+   * Listado liviano (id/nombres/apellidos/email) para cualquier autenticado — pensado para
+   * selectores de "miembro interno" en formularios (ej. equipo de un proyecto) sin requerir
+   * el rol privilegiado que exige `findAll`. Debe ir antes de `:id` en las rutas.
+   */
+  @Get('basico')
+  findAllBasico() {
+    return this.usuariosService.findAllBasico();
+  }
+
+  /**
+   * Alta de usuario por un ADMINISTRADOR sin que la persona se registre por su cuenta —
+   * ver nota en CreateUsuarioDto/UsuariosService.createByAdmin.
+   */
+  @Roles(ROLES.ADMINISTRADOR)
+  @Post()
+  create(@Body() dto: CreateUsuarioDto) {
+    return this.usuariosService.createByAdmin(dto);
   }
 
   @Get(':id')

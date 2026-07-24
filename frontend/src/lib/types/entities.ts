@@ -104,6 +104,8 @@ export interface Proyecto {
   estado: EstadoProyecto;
   created_at: string;
   updated_at: string;
+  /** Solo viene en GET /proyectos/:id (detalle), no en el listado. */
+  usuarios?: Pick<Usuario, "id" | "nombres" | "apellidos" | "email"> | null;
 }
 
 export interface ProyectoEquipoMiembro {
